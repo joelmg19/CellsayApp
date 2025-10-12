@@ -32,7 +32,9 @@ class CameraControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final padding = MediaQuery.of(context).padding;
-    final topOffset = padding.top + (isLandscape ? 12 : 20);
+    final baseOffset = padding.top + (isLandscape ? 12 : 20);
+    // Keep the control panel ~20px below the header as requested.
+    final topOffset = baseOffset + 20;
     final sidePadding = isLandscape ? 24.0 : 20.0;
 
     return Stack(
