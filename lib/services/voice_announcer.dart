@@ -1,11 +1,10 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 import 'dart:async';
-import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:ultralytics_yolo/models/yolo_result.dart';
+import '../models/detection_view_model.dart';
 
 class VoiceAnnouncer {
   VoiceAnnouncer() {
@@ -28,7 +27,7 @@ class VoiceAnnouncer {
   }
 
   Future<void> processDetections(
-    List<YOLOResult> results, {
+    List<DetectionViewModel> detections, {
     required bool isVoiceEnabled,
   }) async {
     if (!isVoiceEnabled) {
@@ -44,13 +43,31 @@ class VoiceAnnouncer {
     }
 
     final now = DateTime.now();
-    if (now.difference(_lastAnnouncement) < const Duration(seconds: 3)) {
+    final messageInfo = _buildMessage(detections);
+    if (messageInfo == null) {
       return;
     }
 
-    final message = _buildMessage(results);
-    if (message == null || message == _lastMessage) {
+    final cooldown = messageInfo.isEmergency
+        ? Duration.zero
+        : const Duration(seconds: 5);
+
+    if (cooldown > Duration.zero &&
+        now.difference(_lastAnnouncement) < cooldown) {
       return;
+    }
+
+    final message = messageInfo.text;
+    final alreadySaid = message == _lastMessage;
+    final timeSinceLast = now.difference(_lastAnnouncement);
+
+    if (alreadySaid) {
+      final emergencyRepeatWindow = const Duration(seconds: 1);
+      final canRepeatEmergency =
+          messageInfo.isEmergency && timeSinceLast >= emergencyRepeatWindow;
+      if (!canRepeatEmergency) {
+        return;
+      }
     }
 
     try {
@@ -73,10 +90,13 @@ class VoiceAnnouncer {
     }
   }
 
-  String? _buildMessage(List<YOLOResult> results) {
-    if (results.isEmpty) {
+  _MessageInfo? _buildMessage(List<DetectionViewModel> detections) {
+    if (detections.isEmpty) {
       if (_lastMessage == null) {
-        return 'No detecto objetos frente a la cámara.';
+        return const _MessageInfo(
+          text: 'No detecto objetos frente a la cámara.',
+          isEmergency: false,
+        );
       }
       _lastMessage = null;
       return null;
@@ -84,19 +104,23 @@ class VoiceAnnouncer {
 
     final descriptions = <String>[];
     String? warning;
+    var hasEmergency = false;
 
-    for (final result in results.take(3)) {
-      final label = result.className.isNotEmpty ? result.className : 'objeto';
-      final rect = _extractRect(result);
-      final distance = _describeDistance(rect);
-      final side = _describeSide(rect);
+    for (final detection in detections.take(3)) {
+      final label = detection.label.isNotEmpty ? detection.label : 'objeto';
+      final distance = _describeDistance(detection);
+      final side = _describeSide(detection);
 
       final directionText = side != null ? ' hacia $side' : '';
       descriptions.add(
         '$label ${distance.description}$directionText',
       );
 
-      if (warning == null && distance.isClose) {
+      if (distance.isClose) {
+        hasEmergency = hasEmergency || distance.isEmergency;
+      }
+
+      if (warning == null && distance.isEmergency) {
         final warningSide = side != null ? 'a $side' : 'al frente';
         warning = 'Cuidado $warningSide, $label está muy cerca.';
       }
@@ -107,124 +131,58 @@ class VoiceAnnouncer {
     }
 
     final base = 'Veo ${descriptions.join(', ')}.';
-    return warning != null ? '$base $warning' : base;
+    final text = warning != null ? '$base $warning' : base;
+    return _MessageInfo(text: text, isEmergency: hasEmergency || warning != null);
   }
 
-  Rect? _extractRect(YOLOResult result) {
-    final dynamic dynamicResult = result;
-    Rect? rect;
-    rect ??= _rectFromDynamic(() => dynamicResult.box as Rect?);
-    rect ??= _rectFromDynamic(() => dynamicResult.boundingBox as Rect?);
-    rect ??= _rectFromDynamic(() => dynamicResult.rect as Rect?);
-    rect ??= _rectFromDynamic(() => dynamicResult.bbox as Rect?);
-    return rect;
-  }
-
-  Rect? _rectFromDynamic(dynamic Function() getter) {
-    try {
-      final value = getter();
-      return _rectFromValue(value);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Rect? _rectFromValue(dynamic value) {
-    if (value == null) return null;
-    if (value is Rect) return value;
-
-    double? left;
-    double? top;
-    double? right;
-    double? bottom;
-
-    try {
-      left = _toDouble(value.left);
-      top = _toDouble(value.top);
-      right = _toDouble(value.right);
-      bottom = _toDouble(value.bottom);
-    } catch (_) {
-      left = null;
-      top = null;
-      right = null;
-      bottom = null;
+  _DistanceDescription _describeDistance(DetectionViewModel detection) {
+    final size = detection.sourceSize;
+    if (size.width <= 0 || size.height <= 0) {
+      return const _DistanceDescription(
+        'a una distancia desconocida',
+        isClose: false,
+        isEmergency: false,
+      );
     }
 
-    if ([left, top, right, bottom].every((element) => element != null)) {
-      return Rect.fromLTRB(left!, top!, right!, bottom!);
-    }
+    final widthRatio =
+        (detection.boundingBox.width / size.width).clamp(0.0, 1.0);
+    final heightRatio =
+        (detection.boundingBox.height / size.height).clamp(0.0, 1.0);
+    final areaRatio = (widthRatio * heightRatio).clamp(0.0, 1.0);
 
-    double? width;
-    double? height;
-
-    try {
-      left ??= _toDouble(value.x);
-      top ??= _toDouble(value.y);
-      width = _toDouble(value.width);
-      height = _toDouble(value.height);
-    } catch (_) {
-      left ??= null;
-      top ??= null;
-      width = null;
-      height = null;
-    }
-
-    if (width != null && height != null && left != null && top != null) {
-      return Rect.fromLTWH(left, top, width, height);
-    }
-
-    if (value is Map) {
-      left ??= _toDouble(value['left'] ?? value['x']);
-      top ??= _toDouble(value['top'] ?? value['y']);
-      right ??= _toDouble(value['right']);
-      bottom ??= _toDouble(value['bottom']);
-      width ??= _toDouble(value['width']);
-      height ??= _toDouble(value['height']);
-
-      if ([left, top, right, bottom].every((element) => element != null)) {
-        return Rect.fromLTRB(left!, top!, right!, bottom!);
-      }
-      if (width != null && height != null && left != null && top != null) {
-        return Rect.fromLTWH(left, top, width, height);
-      }
-    }
-
-    return null;
-  }
-
-  double? _toDouble(dynamic value) {
-    if (value == null) return null;
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is num) return value.toDouble();
-    if (value is String) {
-      return double.tryParse(value);
-    }
-    return null;
-  }
-
-  _DistanceDescription _describeDistance(Rect? rect) {
-    if (rect == null) {
-      return const _DistanceDescription('a una distancia desconocida', false);
-    }
-
-    final area = max(rect.width, 0) * max(rect.height, 0);
-    final normalized = area.clamp(0.0, 1.0);
-
-    if (normalized >= 0.25) {
-      return const _DistanceDescription('a aproximadamente medio metro', true);
-    } else if (normalized >= 0.12) {
-      return const _DistanceDescription('a aproximadamente un metro', true);
-    } else if (normalized >= 0.05) {
-      return const _DistanceDescription('a unos dos metros', false);
+    if (areaRatio >= 0.28) {
+      return const _DistanceDescription(
+        'a menos de medio metro',
+        isClose: true,
+        isEmergency: true,
+      );
+    } else if (areaRatio >= 0.16) {
+      return const _DistanceDescription(
+        'a aproximadamente un metro',
+        isClose: true,
+        isEmergency: false,
+      );
+    } else if (areaRatio >= 0.08) {
+      return const _DistanceDescription(
+        'a unos dos metros',
+        isClose: false,
+        isEmergency: false,
+      );
     } else {
-      return const _DistanceDescription('a más de tres metros', false);
+      return const _DistanceDescription(
+        'a más de tres metros',
+        isClose: false,
+        isEmergency: false,
+      );
     }
   }
 
-  String? _describeSide(Rect? rect) {
-    if (rect == null) return null;
-    final centerX = rect.center.dx;
+  String? _describeSide(DetectionViewModel detection) {
+    final size = detection.sourceSize;
+    if (size.width <= 0) return null;
+
+    final centerX = detection.boundingBox.center.dx / size.width;
 
     if (centerX < 0.33) {
       return 'la izquierda';
@@ -240,8 +198,20 @@ class VoiceAnnouncer {
 }
 
 class _DistanceDescription {
-  const _DistanceDescription(this.description, this.isClose);
+  const _DistanceDescription(
+    this.description, {
+    required this.isClose,
+    required this.isEmergency,
+  });
 
   final String description;
   final bool isClose;
+  final bool isEmergency;
+}
+
+class _MessageInfo {
+  const _MessageInfo({required this.text, required this.isEmergency});
+
+  final String text;
+  final bool isEmergency;
 }

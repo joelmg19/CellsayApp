@@ -7,6 +7,7 @@ import '../widgets/camera_inference_overlay.dart';
 import '../widgets/camera_logo_overlay.dart';
 import '../widgets/camera_controls.dart';
 import '../widgets/threshold_slider.dart';
+import '../widgets/detections_overlay.dart';
 
 /// A screen that demonstrates real-time YOLO inference using the device camera.
 ///
@@ -55,6 +56,7 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
           return Stack(
             children: [
               CameraInferenceContent(controller: _controller),
+              DetectionsOverlay(controller: _controller),
               CameraInferenceOverlay(
                 controller: _controller,
                 isLandscape: isLandscape,
