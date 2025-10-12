@@ -2,6 +2,8 @@
 
 import 'package:ultralytics_yolo/models/yolo_task.dart';
 
+export 'detection_view_model.dart';
+
 enum ModelType {
   detect('yolo11n', YOLOTask.detect),
   segment('yolo11n-seg', YOLOTask.segment),
