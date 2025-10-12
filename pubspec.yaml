@@ -23,6 +23,7 @@ dependencies:
       path: .
 
   cupertino_icons: ^1.0.8
+  flutter_tts: ^3.8.0
 
 dev_dependencies:
   integration_test:

@@ -8,39 +8,64 @@ class ControlButton extends StatelessWidget {
     super.key,
     required this.content,
     required this.onPressed,
+    this.tooltip,
+    this.isActive = false,
   });
 
   final dynamic content;
   final VoidCallback onPressed;
+  final String? tooltip;
+  final bool isActive;
 
   @override
   Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: 24,
-      backgroundColor: Colors.black.withValues(alpha: 0.2),
-      child: _buildContent(),
+    final button = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: isActive
+                ? Colors.blueAccent.withValues(alpha: 0.65)
+                : Colors.black.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: isActive ? 0.4 : 0.18),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 10,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Center(child: _buildContent()),
+        ),
+      ),
     );
+
+    if (tooltip == null) {
+      return button;
+    }
+    return Tooltip(message: tooltip!, child: button);
   }
 
   Widget _buildContent() {
     if (content is IconData) {
-      return IconButton(
-        icon: Icon(content, color: Colors.white),
-        onPressed: onPressed,
-      );
-    } else if (content.toString().contains('assets/')) {
-      return IconButton(
-        icon: Image.asset(content, width: 24, height: 24, color: Colors.white),
-        onPressed: onPressed,
-      );
-    } else {
-      return TextButton(
-        onPressed: onPressed,
-        child: Text(
-          content,
-          style: const TextStyle(color: Colors.white, fontSize: 12),
-        ),
+      return Icon(content, color: Colors.white, size: 26);
+    } else if (content is String && content.toString().contains('assets/')) {
+      return Image.asset(content, width: 26, height: 26, color: Colors.white);
+    } else if (content is String) {
+      return Text(
+        content,
+        style: const TextStyle(color: Colors.white, fontSize: 13),
       );
     }
+
+    return const SizedBox.shrink();
   }
 }
