@@ -1,11 +1,14 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:ultralytics_yolo/models/yolo_result.dart';
-import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
 import 'package:ultralytics_yolo/utils/error_handler.dart';
+import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
 import '../../models/models.dart';
 import '../../services/model_manager.dart';
+import '../../services/voice_announcer.dart';
 
 /// Controller that manages the state and business logic for camera inference
 class CameraInferenceController extends ChangeNotifier {
@@ -31,10 +34,12 @@ class CameraInferenceController extends ChangeNotifier {
   // Camera state
   double _currentZoomLevel = 1.0;
   bool _isFrontCamera = false;
+  bool _isVoiceEnabled = true;
 
   // Controllers
   final _yoloController = YOLOViewController();
   late final ModelManager _modelManager;
+  final VoiceAnnouncer _voiceAnnouncer = VoiceAnnouncer();
 
   // Performance optimization
   bool _isDisposed = false;
@@ -54,6 +59,7 @@ class CameraInferenceController extends ChangeNotifier {
   double get downloadProgress => _downloadProgress;
   double get currentZoomLevel => _currentZoomLevel;
   bool get isFrontCamera => _isFrontCamera;
+  bool get isVoiceEnabled => _isVoiceEnabled;
   YOLOViewController get yoloController => _yoloController;
 
   CameraInferenceController() {
@@ -97,6 +103,13 @@ class CameraInferenceController extends ChangeNotifier {
       _detectionCount = results.length;
       notifyListeners();
     }
+
+    unawaited(
+      _voiceAnnouncer.processDetections(
+        results,
+        isVoiceEnabled: _isVoiceEnabled,
+      ),
+    );
   }
 
   /// Handle performance metrics
@@ -182,6 +195,16 @@ class CameraInferenceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleVoice() {
+    if (_isDisposed) return;
+
+    _isVoiceEnabled = !_isVoiceEnabled;
+    if (!_isVoiceEnabled) {
+      unawaited(_voiceAnnouncer.stop());
+    }
+    notifyListeners();
+  }
+
   void changeModel(ModelType model) {
     if (_isDisposed) return;
 
@@ -250,6 +273,7 @@ class CameraInferenceController extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
+    _voiceAnnouncer.dispose();
     super.dispose();
   }
 }

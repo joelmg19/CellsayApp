@@ -70,6 +70,8 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
                 onZoomChanged: _controller.setZoomLevel,
                 onSliderToggled: _controller.toggleSlider,
                 onCameraFlipped: _controller.flipCamera,
+                onVoiceToggled: _controller.toggleVoice,
+                isVoiceEnabled: _controller.isVoiceEnabled,
                 isLandscape: isLandscape,
               ),
               ThresholdSlider(
