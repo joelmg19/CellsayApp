@@ -8,10 +8,12 @@ class DetectionStatsDisplay extends StatelessWidget {
     super.key,
     required this.detectionCount,
     required this.currentFps,
+    this.textScaleFactor = 1.0,
   });
 
   final int detectionCount;
   final double currentFps;
+  final double textScaleFactor;
 
   @override
   Widget build(BuildContext context) {
@@ -21,17 +23,19 @@ class DetectionStatsDisplay extends StatelessWidget {
         children: [
           Text(
             'DETECTIONS: $detectionCount',
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w600,
+              fontSize: 14 * textScaleFactor,
             ),
           ),
           const SizedBox(width: 16),
           Text(
             'FPS: ${currentFps.toStringAsFixed(1)}',
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w600,
+              fontSize: 14 * textScaleFactor,
             ),
           ),
         ],

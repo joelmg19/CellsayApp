@@ -6,9 +6,12 @@ import 'dart:ui';
 
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:ultralytics_yolo/models/yolo_result.dart';
+import '../models/detection_insight.dart';
+import '../models/voice_settings.dart';
 
 class VoiceAnnouncer {
-  VoiceAnnouncer() {
+  VoiceAnnouncer({VoiceSettings initialSettings = const VoiceSettings()})
+      : _settings = initialSettings {
     _initialization = _configure();
   }
 
@@ -16,12 +19,14 @@ class VoiceAnnouncer {
   Future<void>? _initialization;
   DateTime _lastAnnouncement = DateTime.fromMillisecondsSinceEpoch(0);
   String? _lastMessage;
+  VoiceSettings _settings;
 
   Future<void> _configure() async {
     try {
-      await _tts.setLanguage('es-ES');
-      await _tts.setSpeechRate(0.45);
-      await _tts.setPitch(1.0);
+      await _tts.setLanguage(_settings.language);
+      await _tts.setSpeechRate(_settings.speechRate);
+      await _tts.setPitch(_settings.pitch);
+      await _tts.setVolume(_settings.volume);
     } catch (_) {
       // Ignore configuration errors to avoid crashing voice flow.
     }
@@ -30,6 +35,8 @@ class VoiceAnnouncer {
   Future<void> processDetections(
     List<YOLOResult> results, {
     required bool isVoiceEnabled,
+    ProcessedDetections insights = ProcessedDetections.empty,
+    SafetyAlerts alerts = const SafetyAlerts(),
   }) async {
     if (!isVoiceEnabled) {
       _lastMessage = null;
@@ -48,7 +55,7 @@ class VoiceAnnouncer {
       return;
     }
 
-    final message = _buildMessage(results);
+    final message = _buildMessage(results, insights, alerts);
     if (message == null || message == _lastMessage) {
       return;
     }
@@ -65,6 +72,36 @@ class VoiceAnnouncer {
 
   Future<void> stop() => _safeStop();
 
+  Future<void> updateSettings(VoiceSettings settings) async {
+    _settings = settings;
+    try {
+      await _tts.setLanguage(settings.language);
+    } catch (_) {}
+    try {
+      await _tts.setSpeechRate(settings.speechRate);
+    } catch (_) {}
+    try {
+      await _tts.setPitch(settings.pitch);
+    } catch (_) {}
+    try {
+      await _tts.setVolume(settings.volume);
+    } catch (_) {}
+  }
+
+  Future<void> repeatLastMessage() async {
+    final message = _lastMessage;
+    if (message == null) {
+      return;
+    }
+    try {
+      await _safeStop();
+      await _tts.speak(message);
+      _lastAnnouncement = DateTime.now();
+    } catch (_) {}
+  }
+
+  String? get lastMessage => _lastMessage;
+
   Future<void> _safeStop() async {
     try {
       await _tts.stop();
@@ -73,8 +110,21 @@ class VoiceAnnouncer {
     }
   }
 
-  String? _buildMessage(List<YOLOResult> results) {
-    if (results.isEmpty) {
+  String? _buildMessage(
+    List<YOLOResult> results,
+    ProcessedDetections insights,
+    SafetyAlerts alerts,
+  ) {
+    final alertMessages = alerts.toList();
+    if (alertMessages.isNotEmpty) {
+      return alertMessages.join(' ');
+    }
+
+    final filteredResults = insights.filteredResults.isNotEmpty
+        ? insights.filteredResults
+        : results;
+
+    if (filteredResults.isEmpty) {
       if (_lastMessage == null) {
         return 'No detecto objetos frente a la cámara.';
       }
@@ -85,7 +135,7 @@ class VoiceAnnouncer {
     final descriptions = <String>[];
     String? warning;
 
-    for (final result in results.take(3)) {
+    for (final result in filteredResults.take(3)) {
       final label = result.className.isNotEmpty ? result.className : 'objeto';
       final rect = _extractRect(result);
       final distance = _describeDistance(rect);
@@ -107,7 +157,20 @@ class VoiceAnnouncer {
     }
 
     final base = 'Veo ${descriptions.join(', ')}.';
-    return warning != null ? '$base $warning' : base;
+    final movement = insights.hasMovementWarnings
+        ? ' Peligro en movimiento: ${insights.movementWarnings.join(', ')}.'
+        : '';
+
+    final obstacle = insights.hasCloseObstacle
+        ? ' Obstáculo cercano detectado: ${insights.closeObstacleLabels.join(', ')}.'
+        : '';
+
+    final traffic = _describeTrafficLight(insights.trafficLightSignal);
+
+    return [base, warning, obstacle, movement, traffic]
+        .where((element) => element != null && element.isNotEmpty)
+        .join(' ')
+        .trim();
   }
 
   Rect? _extractRect(YOLOResult result) {
@@ -236,6 +299,17 @@ class VoiceAnnouncer {
 
   void dispose() {
     unawaited(_safeStop());
+  }
+}
+
+String? _describeTrafficLight(TrafficLightSignal signal) {
+  switch (signal) {
+    case TrafficLightSignal.green:
+      return 'Semáforo en verde, es seguro avanzar con precaución.';
+    case TrafficLightSignal.red:
+      return 'Semáforo en rojo, detente y espera.';
+    case TrafficLightSignal.unknown:
+      return null;
   }
 }
 

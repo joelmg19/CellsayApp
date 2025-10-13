@@ -17,6 +17,11 @@ class CameraControls extends StatelessWidget {
     required this.onVoiceToggled,
     required this.isVoiceEnabled,
     required this.isLandscape,
+    required this.onFontIncrease,
+    required this.onFontDecrease,
+    required this.onRepeatInstruction,
+    required this.onVoiceSettings,
+    required this.onVoiceCommand,
   });
 
   final double currentZoomLevel;
@@ -28,6 +33,11 @@ class CameraControls extends StatelessWidget {
   final VoidCallback onVoiceToggled;
   final bool isVoiceEnabled;
   final bool isLandscape;
+  final VoidCallback onFontIncrease;
+  final VoidCallback onFontDecrease;
+  final VoidCallback onRepeatInstruction;
+  final VoidCallback onVoiceSettings;
+  final VoidCallback onVoiceCommand;
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +55,29 @@ class CameraControls extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ControlButton(
+                        content: Icons.text_decrease,
+                        onPressed: onFontDecrease,
+                        tooltip: 'Reducir tamaño de texto',
+                      ),
+                      SizedBox(width: isLandscape ? 12 : 16),
+                      ControlButton(
+                        content: Icons.text_increase,
+                        onPressed: onFontIncrease,
+                        tooltip: 'Aumentar tamaño de texto',
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: isLandscape ? 12 : 16),
+                  ControlButton(
+                    content: Icons.replay,
+                    onPressed: onRepeatInstruction,
+                    tooltip: 'Repetir última instrucción',
+                  ),
+                  SizedBox(height: isLandscape ? 12 : 16),
                   if (!isFrontCamera)
                     ControlButton(
                       content: '${currentZoomLevel.toStringAsFixed(1)}x',
@@ -79,6 +112,12 @@ class CameraControls extends StatelessWidget {
                     isActive: activeSlider == SliderType.iou,
                     tooltip: 'Umbral IoU',
                   ),
+                  SizedBox(height: isLandscape ? 12 : 16),
+                  ControlButton(
+                    content: Icons.mic,
+                    onPressed: onVoiceCommand,
+                    tooltip: 'Ingresar comando por voz',
+                  ),
                 ],
               ),
             ),
@@ -92,6 +131,15 @@ class CameraControls extends StatelessWidget {
             isActive: isVoiceEnabled,
             tooltip:
                 isVoiceEnabled ? 'Desactivar narración' : 'Activar narración',
+          ),
+        ),
+        Positioned(
+          top: topOffset + 72,
+          right: sidePadding,
+          child: ControlButton(
+            content: Icons.settings_voice,
+            onPressed: onVoiceSettings,
+            tooltip: 'Configuración de voz',
           ),
         ),
         Positioned(

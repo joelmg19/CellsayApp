@@ -31,11 +31,13 @@ class CameraInferenceOverlay extends StatelessWidget {
             selectedModel: controller.selectedModel,
             isModelLoading: controller.isModelLoading,
             onModelChanged: controller.changeModel,
+            textScaleFactor: controller.fontScale,
           ),
           SizedBox(height: isLandscape ? 8 : 12),
           DetectionStatsDisplay(
             detectionCount: controller.detectionCount,
             currentFps: controller.currentFps,
+            textScaleFactor: controller.fontScale,
           ),
           const SizedBox(height: 8),
           _buildThresholdPills(),
@@ -49,13 +51,18 @@ class CameraInferenceOverlay extends StatelessWidget {
       return ThresholdPill(
         label:
             'CONFIDENCE THRESHOLD: ${controller.confidenceThreshold.toStringAsFixed(2)}',
+        textScaleFactor: controller.fontScale,
       );
     } else if (controller.activeSlider == SliderType.iou) {
       return ThresholdPill(
         label: 'IOU THRESHOLD: ${controller.iouThreshold.toStringAsFixed(2)}',
+        textScaleFactor: controller.fontScale,
       );
     } else if (controller.activeSlider == SliderType.numItems) {
-      return ThresholdPill(label: 'ITEMS MAX: ${controller.numItemsThreshold}');
+      return ThresholdPill(
+        label: 'ITEMS MAX: ${controller.numItemsThreshold}',
+        textScaleFactor: controller.fontScale,
+      );
     }
     return const SizedBox.shrink();
   }

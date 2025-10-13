@@ -10,11 +10,13 @@ class ModelSelector extends StatelessWidget {
     required this.selectedModel,
     required this.isModelLoading,
     required this.onModelChanged,
+    this.textScaleFactor = 1.0,
   });
 
   final ModelType selectedModel;
   final bool isModelLoading;
   final ValueChanged<ModelType> onModelChanged;
+  final double textScaleFactor;
 
   @override
   Widget build(BuildContext context) {
@@ -45,7 +47,7 @@ class ModelSelector extends StatelessWidget {
                 model.name.toUpperCase(),
                 style: TextStyle(
                   color: isSelected ? Colors.black : Colors.white,
-                  fontSize: 12,
+                  fontSize: 12 * textScaleFactor,
                   fontWeight: FontWeight.w600,
                 ),
               ),
