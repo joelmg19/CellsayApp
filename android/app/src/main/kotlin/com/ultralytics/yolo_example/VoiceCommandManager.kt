@@ -241,15 +241,31 @@ class VoiceCommandManager(private val activity: Activity) : EventChannel.StreamH
 
     private fun getAvailableLocales(): Set<Locale> {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            val languages = SpeechRecognizer.getAvailableLanguages()
-            if (languages != null && languages.isNotEmpty()) {
-                return languages.mapNotNull { tag ->
-                    try {
-                        Locale.forLanguageTag(tag)
-                    } catch (_: Throwable) {
-                        null
+            try {
+                val method = SpeechRecognizer::class.java.getMethod("getAvailableLanguages")
+                val languages = method.invoke(null) as? Set<*>
+                if (languages != null) {
+                    val locales = mutableSetOf<Locale>()
+                    for (entry in languages) {
+                        val locale = when (entry) {
+                            is Locale -> entry
+                            is String -> try {
+                                Locale.forLanguageTag(entry)
+                            } catch (_: Throwable) {
+                                null
+                            }
+                            else -> null
+                        }
+                        if (locale != null) {
+                            locales.add(locale)
+                        }
                     }
-                }.toSet()
+                    if (locales.isNotEmpty()) {
+                        return locales
+                    }
+                }
+            } catch (_: Throwable) {
+                // If reflection fails we will fall back to the default locale below.
             }
         }
         return setOf(Locale.getDefault())
