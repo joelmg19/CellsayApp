@@ -47,6 +47,7 @@ class CameraInferenceController extends ChangeNotifier {
   double _fontScale = 1.0;
   VoiceSettings _voiceSettings = const VoiceSettings();
   String? _voiceCommandStatus;
+  bool _areControlsLocked = false;
 
   // Controllers
   final _yoloController = YOLOViewController();
@@ -82,6 +83,7 @@ class CameraInferenceController extends ChangeNotifier {
   bool get isVoiceEnabled => _isVoiceEnabled;
   double get fontScale => _fontScale;
   VoiceSettings get voiceSettings => _voiceSettings;
+  bool get areControlsLocked => _areControlsLocked;
   ProcessedDetections get processedDetections => _processedDetections;
   SafetyAlerts get safetyAlerts => _safetyAlerts;
   String get formattedTime => DateFormat.Hm().format(_currentTime);
@@ -207,7 +209,7 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   void onZoomChanged(double zoomLevel) {
-    if (_isDisposed) return;
+    if (_isDisposed || _areControlsLocked) return;
 
     if ((_currentZoomLevel - zoomLevel).abs() > 0.01) {
       _currentZoomLevel = zoomLevel;
@@ -216,16 +218,17 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   void toggleSlider(SliderType type) {
-    if (_isDisposed) return;
+    if (_isDisposed || _areControlsLocked) return;
 
-    if (_activeSlider != type) {
-      _activeSlider = _activeSlider == type ? SliderType.none : type;
+    final newValue = _activeSlider == type ? SliderType.none : type;
+    if (newValue != _activeSlider) {
+      _activeSlider = newValue;
       notifyListeners();
     }
   }
 
   void updateSliderValue(double value) {
-    if (_isDisposed) return;
+    if (_isDisposed || _areControlsLocked) return;
 
     bool changed = false;
     switch (_activeSlider) {
@@ -262,7 +265,7 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   void setZoomLevel(double zoomLevel) {
-    if (_isDisposed) return;
+    if (_isDisposed || _areControlsLocked) return;
 
     if ((_currentZoomLevel - zoomLevel).abs() > 0.01) {
       _currentZoomLevel = zoomLevel;
@@ -272,7 +275,7 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   void flipCamera() {
-    if (_isDisposed) return;
+    if (_isDisposed || _areControlsLocked) return;
 
     _isFrontCamera = !_isFrontCamera;
     if (_isFrontCamera) _currentZoomLevel = 1.0;
@@ -281,7 +284,7 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   void toggleVoice() {
-    if (_isDisposed) return;
+    if (_isDisposed || _areControlsLocked) return;
 
     _isVoiceEnabled = !_isVoiceEnabled;
     if (!_isVoiceEnabled) {
@@ -296,7 +299,7 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   void increaseFontScale() {
-    if (_isDisposed) return;
+    if (_isDisposed || _areControlsLocked) return;
 
     final newScale = (_fontScale + 0.1).clamp(0.8, 2.0);
     if ((newScale - _fontScale).abs() > 0.01) {
@@ -307,7 +310,7 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   void decreaseFontScale() {
-    if (_isDisposed) return;
+    if (_isDisposed || _areControlsLocked) return;
 
     final newScale = (_fontScale - 0.1).clamp(0.8, 2.0);
     if ((newScale - _fontScale).abs() > 0.01) {
@@ -318,6 +321,16 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   Future<void> repeatLastInstruction() => _voiceAnnouncer.repeatLastMessage();
+
+  void toggleControlsLock() {
+    if (_isDisposed) return;
+
+    _areControlsLocked = !_areControlsLocked;
+    if (_areControlsLocked && _activeSlider != SliderType.none) {
+      _activeSlider = SliderType.none;
+    }
+    notifyListeners();
+  }
 
   void updateVoiceSettings(VoiceSettings settings) {
     if (_isDisposed) return;

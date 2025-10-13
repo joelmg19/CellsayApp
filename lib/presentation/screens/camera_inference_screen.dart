@@ -80,6 +80,8 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
                 onRepeatInstruction: () => _controller.repeatLastInstruction(),
                 onVoiceSettings: _showVoiceSettings,
                 onVoiceCommand: _promptVoiceCommand,
+                areControlsLocked: _controller.areControlsLocked,
+                onLockToggled: _controller.toggleControlsLock,
               ),
               ThresholdSlider(
                 activeSlider: _controller.activeSlider,
@@ -88,6 +90,7 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
                 numItemsThreshold: _controller.numItemsThreshold,
                 onValueChanged: _controller.updateSliderValue,
                 isLandscape: isLandscape,
+                areControlsLocked: _controller.areControlsLocked,
               ),
               AccessibilityStatusBar(
                 controller: _controller,
