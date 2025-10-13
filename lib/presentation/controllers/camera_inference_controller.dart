@@ -13,6 +13,7 @@ import '../../models/voice_settings.dart';
 import '../../services/detection_post_processor.dart';
 import '../../services/model_manager.dart';
 import '../../services/voice_announcer.dart';
+import '../../services/voice_command_service.dart';
 import '../../services/weather_service.dart';
 
 /// Controller that manages the state and business logic for camera inference
@@ -48,12 +49,14 @@ class CameraInferenceController extends ChangeNotifier {
   VoiceSettings _voiceSettings = const VoiceSettings();
   String? _voiceCommandStatus;
   bool _areControlsLocked = false;
+  bool _isListeningForCommand = false;
 
   // Controllers
   final _yoloController = YOLOViewController();
   late final ModelManager _modelManager;
   final DetectionPostProcessor _postProcessor = DetectionPostProcessor();
   final VoiceAnnouncer _voiceAnnouncer = VoiceAnnouncer();
+  final VoiceCommandService _voiceCommandService = VoiceCommandService();
   final WeatherService _weatherService = WeatherService();
 
   // Performance optimization
@@ -95,6 +98,7 @@ class CameraInferenceController extends ChangeNotifier {
   String? get connectionAlert => _connectionAlert;
   String? get cameraAlert => _cameraAlert;
   String? get voiceCommandStatus => _voiceCommandStatus;
+  bool get isListeningForCommand => _isListeningForCommand;
   YOLOViewController get yoloController => _yoloController;
 
   CameraInferenceController() {
@@ -329,7 +333,20 @@ class CameraInferenceController extends ChangeNotifier {
     if (_areControlsLocked && _activeSlider != SliderType.none) {
       _activeSlider = SliderType.none;
     }
+    if (_areControlsLocked && _isListeningForCommand) {
+      unawaited(_cancelVoiceCommand());
+    }
     notifyListeners();
+  }
+
+  void onVoiceCommandRequested() {
+    if (_isDisposed || _areControlsLocked) return;
+
+    if (_isListeningForCommand) {
+      unawaited(_cancelVoiceCommand());
+    } else {
+      unawaited(_startVoiceCommand());
+    }
   }
 
   void updateVoiceSettings(VoiceSettings settings) {
@@ -412,13 +429,61 @@ class CameraInferenceController extends ChangeNotifier {
     if (!recognized) {
       _voiceCommandStatus = 'Comando no reconocido.';
       unawaited(_announceSystemMessage('No entendí el comando.'));
-    } else {
+    } else if (feedback != null) {
       _voiceCommandStatus = feedback;
-      if (feedback != null) {
-        unawaited(_announceSystemMessage(feedback));
-      }
+      unawaited(_announceSystemMessage(feedback));
     }
 
+    notifyListeners();
+  }
+
+  Future<void> _startVoiceCommand() async {
+    if (_isDisposed) return;
+
+    _isListeningForCommand = true;
+    _voiceCommandStatus = 'Preparando micrófono...';
+    notifyListeners();
+
+    final started = await _voiceCommandService.startListening(
+      onResult: (text) {
+        if (_isDisposed) return;
+        _isListeningForCommand = false;
+        notifyListeners();
+        handleVoiceCommand(text);
+      },
+      onError: (message) {
+        if (_isDisposed) return;
+        _isListeningForCommand = false;
+        _voiceCommandStatus = message;
+        notifyListeners();
+      },
+      onStatus: (listening) {
+        if (_isDisposed) return;
+        _isListeningForCommand = listening;
+        if (listening) {
+          _voiceCommandStatus = 'Escuchando...';
+        } else if (_voiceCommandStatus == 'Escuchando...' ||
+            _voiceCommandStatus == 'Preparando micrófono...') {
+          _voiceCommandStatus = null;
+        }
+        notifyListeners();
+      },
+    );
+
+    if (!started && !_isDisposed) {
+      _isListeningForCommand = false;
+      _voiceCommandStatus ??= 'No fue posible iniciar la escucha.';
+      notifyListeners();
+    }
+  }
+
+  Future<void> _cancelVoiceCommand() async {
+    await _voiceCommandService.cancelListening();
+    if (_isDisposed) return;
+
+    final wasListening = _isListeningForCommand;
+    _isListeningForCommand = false;
+    _voiceCommandStatus = wasListening ? 'Escucha cancelada.' : _voiceCommandStatus;
     notifyListeners();
   }
 
@@ -593,6 +658,7 @@ class CameraInferenceController extends ChangeNotifier {
     _isDisposed = true;
     _voiceAnnouncer.dispose();
     _statusTimer?.cancel();
+    unawaited(_voiceCommandService.dispose());
     _weatherService.dispose();
     super.dispose();
   }

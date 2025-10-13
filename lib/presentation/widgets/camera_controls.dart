@@ -22,6 +22,7 @@ class CameraControls extends StatelessWidget {
     required this.onRepeatInstruction,
     required this.onVoiceSettings,
     required this.onVoiceCommand,
+    required this.isListeningForCommand,
     required this.areControlsLocked,
     required this.onLockToggled,
   });
@@ -40,6 +41,7 @@ class CameraControls extends StatelessWidget {
   final VoidCallback onRepeatInstruction;
   final VoidCallback onVoiceSettings;
   final VoidCallback onVoiceCommand;
+  final bool isListeningForCommand;
   final bool areControlsLocked;
   final VoidCallback onLockToggled;
 
@@ -113,8 +115,11 @@ class CameraControls extends StatelessWidget {
       ControlButton(
         content: Icons.mic,
         onPressed: onVoiceCommand,
-        tooltip: 'Ingresar comando por voz',
+        tooltip: isListeningForCommand
+            ? 'Escuchando comando de voz'
+            : 'Iniciar comando de voz',
         isDisabled: areControlsLocked,
+        isActive: isListeningForCommand,
       ),
       ControlButton(
         content: isVoiceEnabled ? Icons.volume_up : Icons.volume_off,
