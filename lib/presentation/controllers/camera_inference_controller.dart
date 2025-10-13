@@ -390,10 +390,23 @@ class CameraInferenceController extends ChangeNotifier {
         toggleVoice();
       }
       feedback = !_isVoiceEnabled ? null : 'Narración desactivada.';
+    } else if (normalized.contains('detect') ||
+        normalized.contains('detecc') ||
+        normalized.contains('objeto')) {
+      recognized = true;
+      final count = _detectionCount;
+      final objectLabel = count == 1 ? 'objeto' : 'objetos';
+      final detectionMessage =
+          count > 0 ? 'Detecto $count $objectLabel.' : 'No detecto objetos ahora.';
+      feedback = detectionMessage;
+    } else if (normalized.contains('hora')) {
+      recognized = true;
+      final timeMessage = 'Son las $formattedTime.';
+      feedback = timeMessage;
     } else if (normalized.contains('clima') || normalized.contains('tiempo')) {
       recognized = true;
+      feedback = 'Actualizando clima.';
       unawaited(refreshWeather());
-      feedback = null;
     }
 
     if (!recognized) {

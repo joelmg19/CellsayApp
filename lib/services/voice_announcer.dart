@@ -17,6 +17,7 @@ class VoiceAnnouncer {
 
   final FlutterTts _tts = FlutterTts();
   Future<void>? _initialization;
+  static const Duration _minimumPause = Duration(seconds: 3);
   DateTime _lastAnnouncement = DateTime.fromMillisecondsSinceEpoch(0);
   String? _lastMessage;
   VoiceSettings _settings;
@@ -51,7 +52,7 @@ class VoiceAnnouncer {
     }
 
     final now = DateTime.now();
-    if (now.difference(_lastAnnouncement) < const Duration(seconds: 3)) {
+    if (now.difference(_lastAnnouncement) < _minimumPause) {
       return;
     }
 
@@ -63,7 +64,7 @@ class VoiceAnnouncer {
     try {
       await _safeStop();
       await _tts.speak(message);
-      _lastAnnouncement = now;
+      _lastAnnouncement = DateTime.now();
       _lastMessage = message;
     } catch (_) {
       // Ignore speak failures to keep detection loop running.

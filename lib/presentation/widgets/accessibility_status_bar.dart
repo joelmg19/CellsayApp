@@ -76,8 +76,11 @@ class AccessibilityStatusBar extends StatelessWidget {
       );
     }
 
+    final mediaPadding = MediaQuery.of(context).padding;
+    final topOffset = mediaPadding.top + (isLandscape ? 120 : 208);
+
     return Positioned(
-      bottom: isLandscape ? 16 : 140,
+      top: topOffset,
       left: 16,
       right: 16,
       child: Column(

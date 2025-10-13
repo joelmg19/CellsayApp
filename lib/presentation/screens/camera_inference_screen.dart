@@ -5,7 +5,6 @@ import '../controllers/camera_inference_controller.dart';
 import '../widgets/accessibility_status_bar.dart';
 import '../widgets/camera_inference_content.dart';
 import '../widgets/camera_inference_overlay.dart';
-import '../widgets/camera_logo_overlay.dart';
 import '../widgets/camera_controls.dart';
 import '../widgets/threshold_slider.dart';
 import '../widgets/voice_settings_sheet.dart';
@@ -58,10 +57,6 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
             children: [
               CameraInferenceContent(controller: _controller),
               CameraInferenceOverlay(
-                controller: _controller,
-                isLandscape: isLandscape,
-              ),
-              CameraLogoOverlay(
                 controller: _controller,
                 isLandscape: isLandscape,
               ),
