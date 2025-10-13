@@ -4,9 +4,14 @@ import 'package:flutter/material.dart';
 
 /// A pill-shaped container for displaying threshold values
 class ThresholdPill extends StatelessWidget {
-  const ThresholdPill({super.key, required this.label});
+  const ThresholdPill({
+    super.key,
+    required this.label,
+    this.textScaleFactor = 1.0,
+  });
 
   final String label;
+  final double textScaleFactor;
 
   @override
   Widget build(BuildContext context) {
@@ -18,9 +23,10 @@ class ThresholdPill extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.w600,
+          fontSize: 14 * textScaleFactor,
         ),
       ),
     );

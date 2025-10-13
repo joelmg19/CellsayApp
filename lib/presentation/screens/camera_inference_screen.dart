@@ -2,11 +2,13 @@
 
 import 'package:flutter/material.dart';
 import '../controllers/camera_inference_controller.dart';
+import '../widgets/accessibility_status_bar.dart';
 import '../widgets/camera_inference_content.dart';
 import '../widgets/camera_inference_overlay.dart';
 import '../widgets/camera_logo_overlay.dart';
 import '../widgets/camera_controls.dart';
 import '../widgets/threshold_slider.dart';
+import '../widgets/voice_settings_sheet.dart';
 
 /// A screen that demonstrates real-time YOLO inference using the device camera.
 ///
@@ -73,6 +75,11 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
                 onVoiceToggled: _controller.toggleVoice,
                 isVoiceEnabled: _controller.isVoiceEnabled,
                 isLandscape: isLandscape,
+                onFontIncrease: _controller.increaseFontScale,
+                onFontDecrease: _controller.decreaseFontScale,
+                onRepeatInstruction: () => _controller.repeatLastInstruction(),
+                onVoiceSettings: _showVoiceSettings,
+                onVoiceCommand: _promptVoiceCommand,
               ),
               ThresholdSlider(
                 activeSlider: _controller.activeSlider,
@@ -80,6 +87,10 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
                 iouThreshold: _controller.iouThreshold,
                 numItemsThreshold: _controller.numItemsThreshold,
                 onValueChanged: _controller.updateSliderValue,
+                isLandscape: isLandscape,
+              ),
+              AccessibilityStatusBar(
+                controller: _controller,
                 isLandscape: isLandscape,
               ),
             ],
@@ -102,4 +113,50 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
       ],
     ),
   );
+
+  void _showVoiceSettings() {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Colors.black.withValues(alpha: 0.85),
+      builder: (context) => VoiceSettingsSheet(
+        initialSettings: _controller.voiceSettings,
+        onChanged: _controller.updateVoiceSettings,
+        fontScale: _controller.fontScale,
+      ),
+    );
+  }
+
+  Future<void> _promptVoiceCommand() async {
+    final commandController = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Comando de voz'),
+        content: TextField(
+          controller: commandController,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Di o escribe un comando (ej. repetir, clima, subir texto)',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, commandController.text),
+            child: const Text('Enviar'),
+          ),
+        ],
+      ),
+    );
+    commandController.dispose();
+
+    final command = result?.trim();
+    if (command != null && command.isNotEmpty) {
+      _controller.handleVoiceCommand(command);
+    }
+  }
 }
