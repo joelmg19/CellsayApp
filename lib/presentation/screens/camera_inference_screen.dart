@@ -74,7 +74,8 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
                 onFontDecrease: _controller.decreaseFontScale,
                 onRepeatInstruction: () => _controller.repeatLastInstruction(),
                 onVoiceSettings: _showVoiceSettings,
-                onVoiceCommand: _promptVoiceCommand,
+                onVoiceCommand: _controller.onVoiceCommandRequested,
+                isListeningForCommand: _controller.isListeningForCommand,
                 areControlsLocked: _controller.areControlsLocked,
                 onLockToggled: _controller.toggleControlsLock,
               ),
@@ -125,36 +126,4 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
     );
   }
 
-  Future<void> _promptVoiceCommand() async {
-    final commandController = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Comando de voz'),
-        content: TextField(
-          controller: commandController,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'Di o escribe un comando (ej. repetir, clima, subir texto)',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, commandController.text),
-            child: const Text('Enviar'),
-          ),
-        ],
-      ),
-    );
-    commandController.dispose();
-
-    final command = result?.trim();
-    if (command != null && command.isNotEmpty) {
-      _controller.handleVoiceCommand(command);
-    }
-  }
 }
