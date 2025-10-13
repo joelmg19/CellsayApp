@@ -10,36 +10,46 @@ class ControlButton extends StatelessWidget {
     required this.onPressed,
     this.tooltip,
     this.isActive = false,
+    this.isDisabled = false,
   });
 
   final dynamic content;
   final VoidCallback onPressed;
   final String? tooltip;
   final bool isActive;
+  final bool isDisabled;
 
   @override
   Widget build(BuildContext context) {
     final button = Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(18),
+        onTap: isDisabled ? null : onPressed,
+        borderRadius: BorderRadius.circular(16),
         child: Ink(
-          width: 56,
-          height: 56,
+          width: 52,
+          height: 52,
           decoration: BoxDecoration(
-            color: isActive
-                ? Colors.blueAccent.withValues(alpha: 0.65)
-                : Colors.black.withValues(alpha: 0.35),
-            borderRadius: BorderRadius.circular(18),
+            color: isDisabled
+                ? Colors.black.withValues(alpha: 0.18)
+                : isActive
+                    ? Colors.blueAccent.withValues(alpha: 0.65)
+                    : Colors.black.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.white.withValues(alpha: isActive ? 0.4 : 0.18),
+              color: Colors.white.withValues(
+                alpha: isDisabled
+                    ? 0.08
+                    : isActive
+                        ? 0.4
+                        : 0.18,
+              ),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.25),
+                color: Colors.black.withValues(alpha: isDisabled ? 0.1 : 0.25),
                 blurRadius: 10,
-                offset: const Offset(0, 6),
+                offset: const Offset(0, 5),
               ),
             ],
           ),
@@ -56,13 +66,13 @@ class ControlButton extends StatelessWidget {
 
   Widget _buildContent() {
     if (content is IconData) {
-      return Icon(content, color: Colors.white, size: 26);
+      return Icon(content, color: Colors.white, size: 24);
     } else if (content is String && content.toString().contains('assets/')) {
-      return Image.asset(content, width: 26, height: 26, color: Colors.white);
+      return Image.asset(content, width: 24, height: 24, color: Colors.white);
     } else if (content is String) {
       return Text(
         content,
-        style: const TextStyle(color: Colors.white, fontSize: 13),
+        style: const TextStyle(color: Colors.white, fontSize: 12),
       );
     }
 

@@ -13,6 +13,7 @@ class ThresholdSlider extends StatelessWidget {
     required this.numItemsThreshold,
     required this.onValueChanged,
     required this.isLandscape,
+    required this.areControlsLocked,
   });
 
   final SliderType activeSlider;
@@ -21,6 +22,7 @@ class ThresholdSlider extends StatelessWidget {
   final int numItemsThreshold;
   final ValueChanged<double> onValueChanged;
   final bool isLandscape;
+  final bool areControlsLocked;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +53,7 @@ class ThresholdSlider extends StatelessWidget {
             max: _getSliderMax(),
             divisions: _getSliderDivisions(),
             label: _getSliderLabel(),
-            onChanged: onValueChanged,
+            onChanged: areControlsLocked ? null : onValueChanged,
           ),
         ),
       ),

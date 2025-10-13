@@ -22,6 +22,8 @@ class CameraControls extends StatelessWidget {
     required this.onRepeatInstruction,
     required this.onVoiceSettings,
     required this.onVoiceCommand,
+    required this.areControlsLocked,
+    required this.onLockToggled,
   });
 
   final double currentZoomLevel;
@@ -38,120 +40,131 @@ class CameraControls extends StatelessWidget {
   final VoidCallback onRepeatInstruction;
   final VoidCallback onVoiceSettings;
   final VoidCallback onVoiceCommand;
+  final bool areControlsLocked;
+  final VoidCallback onLockToggled;
 
   @override
   Widget build(BuildContext context) {
     final padding = MediaQuery.of(context).padding;
-    final topOffset = padding.top + (isLandscape ? 12 : 20);
-    final sidePadding = isLandscape ? 24.0 : 20.0;
+    final bottomPadding = isLandscape ? 16.0 : 24.0;
+    final wrapSpacing = isLandscape ? 10.0 : 14.0;
 
-    return Stack(
-      children: [
-        Positioned(
-            top: topOffset,
-            left: sidePadding,
-            child: _ControlPanel(
-              isLandscape: isLandscape,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ControlButton(
-                        content: Icons.text_decrease,
-                        onPressed: onFontDecrease,
-                        tooltip: 'Reducir tamaño de texto',
-                      ),
-                      SizedBox(width: isLandscape ? 12 : 16),
-                      ControlButton(
-                        content: Icons.text_increase,
-                        onPressed: onFontIncrease,
-                        tooltip: 'Aumentar tamaño de texto',
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: isLandscape ? 12 : 16),
-                  ControlButton(
-                    content: Icons.replay,
-                    onPressed: onRepeatInstruction,
-                    tooltip: 'Repetir última instrucción',
-                  ),
-                  SizedBox(height: isLandscape ? 12 : 16),
-                  if (!isFrontCamera)
-                    ControlButton(
-                      content: '${currentZoomLevel.toStringAsFixed(1)}x',
-                      onPressed: () => onZoomChanged(
-                        currentZoomLevel < 0.75
-                            ? 1.0
-                            : currentZoomLevel < 2.0
-                                ? 3.0
-                                : 0.5,
-                      ),
-                      tooltip: 'Cambiar zoom',
-                    ),
-                  if (!isFrontCamera)
-                    SizedBox(height: isLandscape ? 12 : 16),
-                  ControlButton(
-                    content: Icons.layers,
-                    onPressed: () => onSliderToggled(SliderType.numItems),
-                    isActive: activeSlider == SliderType.numItems,
-                    tooltip: 'Límite de objetos',
-                  ),
-                  SizedBox(height: isLandscape ? 12 : 16),
-                  ControlButton(
-                    content: Icons.adjust,
-                    onPressed: () => onSliderToggled(SliderType.confidence),
-                    isActive: activeSlider == SliderType.confidence,
-                    tooltip: 'Umbral de confianza',
-                  ),
-                  SizedBox(height: isLandscape ? 12 : 16),
-                  ControlButton(
-                    content: 'assets/iou.png',
-                    onPressed: () => onSliderToggled(SliderType.iou),
-                    isActive: activeSlider == SliderType.iou,
-                    tooltip: 'Umbral IoU',
-                  ),
-                  SizedBox(height: isLandscape ? 12 : 16),
-                  ControlButton(
-                    content: Icons.mic,
-                    onPressed: onVoiceCommand,
-                    tooltip: 'Ingresar comando por voz',
-                  ),
-                ],
+    final buttons = <Widget>[
+      ControlButton(
+        content: areControlsLocked ? Icons.lock : Icons.lock_open,
+        onPressed: onLockToggled,
+        isActive: areControlsLocked,
+        tooltip: areControlsLocked
+            ? 'Desbloquear controles'
+            : 'Bloquear controles',
+      ),
+      ControlButton(
+        content: Icons.text_decrease,
+        onPressed: onFontDecrease,
+        tooltip: 'Reducir tamaño de texto',
+        isDisabled: areControlsLocked,
+      ),
+      ControlButton(
+        content: Icons.text_increase,
+        onPressed: onFontIncrease,
+        tooltip: 'Aumentar tamaño de texto',
+        isDisabled: areControlsLocked,
+      ),
+      ControlButton(
+        content: Icons.replay,
+        onPressed: onRepeatInstruction,
+        tooltip: 'Repetir última instrucción',
+        isDisabled: areControlsLocked,
+      ),
+      if (!isFrontCamera)
+        ControlButton(
+          content: '${currentZoomLevel.toStringAsFixed(1)}x',
+          onPressed: () => onZoomChanged(
+            currentZoomLevel < 0.75
+                ? 1.0
+                : currentZoomLevel < 2.0
+                    ? 3.0
+                    : 0.5,
+          ),
+          tooltip: 'Cambiar zoom',
+          isDisabled: areControlsLocked,
+        ),
+      ControlButton(
+        content: Icons.layers,
+        onPressed: () => onSliderToggled(SliderType.numItems),
+        isActive: activeSlider == SliderType.numItems,
+        tooltip: 'Límite de objetos',
+        isDisabled: areControlsLocked,
+      ),
+      ControlButton(
+        content: Icons.adjust,
+        onPressed: () => onSliderToggled(SliderType.confidence),
+        isActive: activeSlider == SliderType.confidence,
+        tooltip: 'Umbral de confianza',
+        isDisabled: areControlsLocked,
+      ),
+      ControlButton(
+        content: 'assets/iou.png',
+        onPressed: () => onSliderToggled(SliderType.iou),
+        isActive: activeSlider == SliderType.iou,
+        tooltip: 'Umbral IoU',
+        isDisabled: areControlsLocked,
+      ),
+      ControlButton(
+        content: Icons.mic,
+        onPressed: onVoiceCommand,
+        tooltip: 'Ingresar comando por voz',
+        isDisabled: areControlsLocked,
+      ),
+      ControlButton(
+        content: isVoiceEnabled ? Icons.volume_up : Icons.volume_off,
+        onPressed: onVoiceToggled,
+        isActive: isVoiceEnabled,
+        tooltip:
+            isVoiceEnabled ? 'Desactivar narración' : 'Activar narración',
+        isDisabled: areControlsLocked,
+      ),
+      ControlButton(
+        content: Icons.settings_voice,
+        onPressed: onVoiceSettings,
+        tooltip: 'Configuración de voz',
+        isDisabled: areControlsLocked,
+      ),
+      ControlButton(
+        content: Icons.flip_camera_ios,
+        onPressed: onCameraFlipped,
+        tooltip: 'Cambiar cámara',
+        isDisabled: areControlsLocked,
+      ),
+    ];
+
+    return SafeArea(
+      child: Align(
+        alignment:
+            isLandscape ? Alignment.centerRight : Alignment.bottomCenter,
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: isLandscape ? 0 : 24.0,
+            right: 24.0,
+            bottom: bottomPadding + padding.bottom,
+          ),
+          child: _ControlPanel(
+            isLandscape: isLandscape,
+            isLocked: areControlsLocked,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: isLandscape ? 280 : 360,
+              ),
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                spacing: wrapSpacing,
+                runSpacing: wrapSpacing,
+                children: buttons,
               ),
             ),
           ),
-        Positioned(
-          top: topOffset,
-          right: sidePadding,
-          child: ControlButton(
-            content: isVoiceEnabled ? Icons.volume_up : Icons.volume_off,
-            onPressed: onVoiceToggled,
-            isActive: isVoiceEnabled,
-            tooltip:
-                isVoiceEnabled ? 'Desactivar narración' : 'Activar narración',
-          ),
         ),
-        Positioned(
-          top: topOffset + 72,
-          right: sidePadding,
-          child: ControlButton(
-            content: Icons.settings_voice,
-            onPressed: onVoiceSettings,
-            tooltip: 'Configuración de voz',
-          ),
-        ),
-        Positioned(
-          bottom: isLandscape ? 24 : 32,
-          right: sidePadding,
-          child: ControlButton(
-            content: Icons.flip_camera_ios,
-            onPressed: onCameraFlipped,
-            tooltip: 'Cambiar cámara',
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -160,16 +173,20 @@ class _ControlPanel extends StatelessWidget {
   const _ControlPanel({
     required this.child,
     required this.isLandscape,
+    required this.isLocked,
   });
 
   final Widget child;
   final bool isLandscape;
+  final bool isLocked;
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.35),
+        color: isLocked
+            ? Colors.black.withValues(alpha: 0.25)
+            : Colors.black.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
         boxShadow: [
