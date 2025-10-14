@@ -51,6 +51,7 @@ class CameraInferenceController extends ChangeNotifier {
   bool _areControlsLocked = false;
   bool _isListeningForCommand = false;
   bool _isVoiceFeedbackPaused = false;
+  bool _isProcessingVoiceCommand = false;
 
   // Controllers
   final _yoloController = YOLOViewController();
@@ -363,7 +364,7 @@ class CameraInferenceController extends ChangeNotifier {
     await _refreshWeather(force: true);
   }
 
-  void handleVoiceCommand(String command) {
+  Future<void> handleVoiceCommand(String command) async {
     if (_isDisposed) return;
 
     final normalized = _normalizeCommandText(command);
@@ -373,6 +374,7 @@ class CameraInferenceController extends ChangeNotifier {
 
     String? feedback;
     bool recognized = false;
+    bool repeatInstruction = false;
 
     final textKeywords = ['letra', 'letras', 'fuente', 'texto', 'tamano', 'tamanos'];
     final voiceKeywords = ['voz', 'narr', 'locucion', 'audio', 'asistente'];
@@ -389,7 +391,7 @@ class CameraInferenceController extends ChangeNotifier {
     ])) {
       recognized = true;
       feedback = 'Repitiendo la última instrucción.';
-      unawaited(repeatLastInstruction());
+      repeatInstruction = true;
     } else if (
         _containsAny(normalized, [
               'sube',
@@ -507,13 +509,47 @@ class CameraInferenceController extends ChangeNotifier {
 
     if (!recognized) {
       _voiceCommandStatus = 'Comando no reconocido.';
-      unawaited(_announceSystemMessage('No entendí el comando.'));
-    } else if (feedback != null) {
-      _voiceCommandStatus = feedback;
-      unawaited(_announceSystemMessage(feedback));
+      notifyListeners();
+      await _announceSystemMessage('No entendí el comando.');
+      return;
     }
 
+    _voiceCommandStatus = feedback;
     notifyListeners();
+
+    if (feedback != null) {
+      await _announceSystemMessage(feedback);
+    }
+
+    if (repeatInstruction) {
+      await repeatLastInstruction();
+    }
+  }
+
+  String _normalizeCommandText(String command) {
+    var normalized = command.toLowerCase();
+    normalized = normalized
+        .replaceAll(RegExp(r'[^a-z0-9áéíóúüñ ]'), ' ')
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ü', 'u')
+        .replaceAll('ñ', 'n')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return normalized;
+  }
+
+  bool _containsAny(String text, Iterable<String> patterns) {
+    for (final pattern in patterns) {
+      if (pattern.isEmpty) continue;
+      if (text.contains(pattern)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   String _normalizeCommandText(String command) {
@@ -556,7 +592,7 @@ class CameraInferenceController extends ChangeNotifier {
         _isListeningForCommand = false;
         _setVoiceFeedbackPaused(false);
         notifyListeners();
-        handleVoiceCommand(text);
+        unawaited(_processVoiceCommandResult(text));
       },
       onError: (message) {
         if (_isDisposed) return;
@@ -571,8 +607,9 @@ class CameraInferenceController extends ChangeNotifier {
         if (listening) {
           _voiceCommandStatus = 'Escuchando...';
           _setVoiceFeedbackPaused(true);
-        } else if (_voiceCommandStatus == 'Escuchando...' ||
-            _voiceCommandStatus == 'Preparando micrófono...') {
+        } else if (!_isProcessingVoiceCommand &&
+            (_voiceCommandStatus == 'Escuchando...' ||
+                _voiceCommandStatus == 'Preparando micrófono...')) {
           _voiceCommandStatus = null;
           _setVoiceFeedbackPaused(false);
         }
@@ -583,6 +620,20 @@ class CameraInferenceController extends ChangeNotifier {
     if (!started && !_isDisposed) {
       _isListeningForCommand = false;
       _voiceCommandStatus ??= 'No fue posible iniciar la escucha.';
+      _setVoiceFeedbackPaused(false);
+      notifyListeners();
+    }
+  }
+
+  Future<void> _processVoiceCommandResult(String text) async {
+    if (_isDisposed) return;
+
+    _isProcessingVoiceCommand = true;
+    try {
+      await handleVoiceCommand(text);
+    } finally {
+      if (_isDisposed) return;
+      _isProcessingVoiceCommand = false;
       _setVoiceFeedbackPaused(false);
       notifyListeners();
     }
