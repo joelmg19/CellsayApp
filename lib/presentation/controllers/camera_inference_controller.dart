@@ -50,6 +50,7 @@ class CameraInferenceController extends ChangeNotifier {
   String? _voiceCommandStatus;
   bool _areControlsLocked = false;
   bool _isListeningForCommand = false;
+  bool _isVoiceFeedbackPaused = false;
 
   // Controllers
   final _yoloController = YOLOViewController();
@@ -195,7 +196,7 @@ class CameraInferenceController extends ChangeNotifier {
     unawaited(
       _voiceAnnouncer.processDetections(
         filtered,
-        isVoiceEnabled: _isVoiceEnabled,
+        isVoiceEnabled: _isVoiceEnabled && !_isVoiceFeedbackPaused,
         insights: processed,
         alerts: _safetyAlerts,
       ),
@@ -365,7 +366,7 @@ class CameraInferenceController extends ChangeNotifier {
   void handleVoiceCommand(String command) {
     if (_isDisposed) return;
 
-    final normalized = command.toLowerCase().trim();
+    final normalized = _normalizeCommandText(command);
     if (normalized.isEmpty) {
       return;
     }
@@ -373,54 +374,132 @@ class CameraInferenceController extends ChangeNotifier {
     String? feedback;
     bool recognized = false;
 
-    if (normalized.contains('repet')) {
+    final textKeywords = ['letra', 'letras', 'fuente', 'texto', 'tamano', 'tamanos'];
+    final voiceKeywords = ['voz', 'narr', 'locucion', 'audio', 'asistente'];
+
+    if (_containsAny(normalized, [
+      'repite',
+      'repitelo',
+      'repetir',
+      'otra vez',
+      'dilo de nuevo',
+      'vuelve a decirlo',
+      'repeti',
+      'otra vez por favor',
+    ])) {
       recognized = true;
       feedback = 'Repitiendo la última instrucción.';
       unawaited(repeatLastInstruction());
-    } else if ((normalized.contains('sube') || normalized.contains('aumenta')) &&
-        (normalized.contains('letra') || normalized.contains('fuente') ||
-            normalized.contains('texto'))) {
+    } else if (
+        _containsAny(normalized, [
+              'sube',
+              'aumenta',
+              'incrementa',
+              'incrementar',
+              'agranda',
+              'agrandalo',
+              'amplia',
+              'amplialo',
+              'haz mas grande',
+              'mas grande',
+              'eleva',
+              'subir',
+              'crece',
+              'agrandar',
+            ]) &&
+            _containsAny(normalized, textKeywords)) {
       recognized = true;
       increaseFontScale();
       feedback = 'Aumentando tamaño de texto.';
-    } else if ((normalized.contains('baja') || normalized.contains('disminuye')) &&
-        (normalized.contains('letra') || normalized.contains('fuente') ||
-            normalized.contains('texto'))) {
+    } else if (
+        _containsAny(normalized, [
+              'baja',
+              'bajar',
+              'disminuye',
+              'disminuir',
+              'reduce',
+              'reducir',
+              'achica',
+              'haz mas pequeno',
+              'mas pequeno',
+              'mas chico',
+              'mas chiquito',
+              'decrementa',
+              'menor',
+              'encoge',
+            ]) &&
+            _containsAny(normalized, textKeywords)) {
       recognized = true;
       decreaseFontScale();
       feedback = 'Reduciendo tamaño de texto.';
-    } else if ((normalized.contains('activa') ||
-            normalized.contains('enciende') ||
-            normalized.contains('activar')) &&
-        (normalized.contains('voz') || normalized.contains('narr'))) {
+    } else if (_containsAny(normalized, [
+      'ayuda',
+      'ayudame',
+      'que puedes hacer',
+      'opciones',
+      'comandos disponibles',
+      'que haces',
+    ])) {
+      recognized = true;
+      feedback =
+          'Puedes pedirme que repita instrucciones, cambiar el tamaño de texto, activar o desactivar la narración, conocer los objetos detectados, preguntar la hora o consultar el clima.';
+    } else if (
+        _containsAny(normalized, ['activa', 'enciende', 'habilita', 'activar', 'pon', 'enciendelo', 'prende']) &&
+            _containsAny(normalized, voiceKeywords)) {
       recognized = true;
       if (!_isVoiceEnabled) {
         toggleVoice();
       }
       feedback = _isVoiceEnabled ? null : 'Narración activada.';
-    } else if ((normalized.contains('desactiva') ||
-            normalized.contains('apaga') ||
-            normalized.contains('silencio')) &&
-        (normalized.contains('voz') || normalized.contains('narr'))) {
+    } else if (
+        _containsAny(normalized, ['desactiva', 'apaga', 'silencia', 'silencio', 'deshabilita', 'quita', 'calla', 'apagala']) &&
+            _containsAny(normalized, voiceKeywords)) {
       recognized = true;
       if (_isVoiceEnabled) {
         toggleVoice();
       }
       feedback = !_isVoiceEnabled ? null : 'Narración desactivada.';
-    } else if (normalized.contains('detect') ||
-        normalized.contains('detecc') ||
-        normalized.contains('objeto')) {
+    } else if (_containsAny(normalized, [
+      'detecta',
+      'deteccion',
+      'objeto',
+      'que ves',
+      'que miras',
+      'que observas',
+      'que hay',
+      'que se ve',
+      'cuantos objetos',
+      'que detectas',
+      'que identificas',
+    ])) {
       recognized = true;
       final count = _detectionCount;
       final objectLabel = count == 1 ? 'objeto' : 'objetos';
       final detectionMessage =
           count > 0 ? 'Detecto $count $objectLabel.' : 'No detecto objetos ahora.';
       feedback = detectionMessage;
-    } else if (normalized.contains('hora')) {
+    } else if (_containsAny(normalized, [
+      'hora',
+      'que hora es',
+      'dime la hora',
+      'hora actual',
+      'hora por favor',
+      'dame la hora',
+      'que hora tienes',
+    ])) {
       recognized = true;
       final timeMessage = 'Son las $formattedTime.';
       feedback = timeMessage;
-    } else if (normalized.contains('clima') || normalized.contains('tiempo')) {
+    } else if (_containsAny(normalized, [
+      'clima',
+      'tiempo',
+      'pronostico',
+      'temperatura',
+      'como esta el clima',
+      'como esta el tiempo',
+      'pronostico del tiempo',
+      'que temperatura hay',
+    ])) {
       recognized = true;
       feedback = 'Actualizando clima.';
       unawaited(refreshWeather());
@@ -437,10 +516,37 @@ class CameraInferenceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  String _normalizeCommandText(String command) {
+    var normalized = command.toLowerCase();
+    normalized = normalized
+        .replaceAll(RegExp(r'[^a-z0-9áéíóúüñ ]'), ' ')
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ü', 'u')
+        .replaceAll('ñ', 'n')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return normalized;
+  }
+
+  bool _containsAny(String text, Iterable<String> patterns) {
+    for (final pattern in patterns) {
+      if (pattern.isEmpty) continue;
+      if (text.contains(pattern)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> _startVoiceCommand() async {
     if (_isDisposed) return;
 
     _isListeningForCommand = true;
+    _setVoiceFeedbackPaused(true);
     _voiceCommandStatus = 'Preparando micrófono...';
     notifyListeners();
 
@@ -448,6 +554,7 @@ class CameraInferenceController extends ChangeNotifier {
       onResult: (text) {
         if (_isDisposed) return;
         _isListeningForCommand = false;
+        _setVoiceFeedbackPaused(false);
         notifyListeners();
         handleVoiceCommand(text);
       },
@@ -456,15 +563,18 @@ class CameraInferenceController extends ChangeNotifier {
         _isListeningForCommand = false;
         _voiceCommandStatus = message;
         notifyListeners();
+        _setVoiceFeedbackPaused(false);
       },
       onStatus: (listening) {
         if (_isDisposed) return;
         _isListeningForCommand = listening;
         if (listening) {
           _voiceCommandStatus = 'Escuchando...';
+          _setVoiceFeedbackPaused(true);
         } else if (_voiceCommandStatus == 'Escuchando...' ||
             _voiceCommandStatus == 'Preparando micrófono...') {
           _voiceCommandStatus = null;
+          _setVoiceFeedbackPaused(false);
         }
         notifyListeners();
       },
@@ -473,6 +583,7 @@ class CameraInferenceController extends ChangeNotifier {
     if (!started && !_isDisposed) {
       _isListeningForCommand = false;
       _voiceCommandStatus ??= 'No fue posible iniciar la escucha.';
+      _setVoiceFeedbackPaused(false);
       notifyListeners();
     }
   }
@@ -483,6 +594,7 @@ class CameraInferenceController extends ChangeNotifier {
 
     final wasListening = _isListeningForCommand;
     _isListeningForCommand = false;
+    _setVoiceFeedbackPaused(false);
     _voiceCommandStatus = wasListening ? 'Escucha cancelada.' : _voiceCommandStatus;
     notifyListeners();
   }
@@ -651,6 +763,12 @@ class CameraInferenceController extends ChangeNotifier {
       insights: ProcessedDetections.empty,
       alerts: SafetyAlerts(connectionAlert: message),
     );
+  }
+
+  void _setVoiceFeedbackPaused(bool value) {
+    if (_isVoiceFeedbackPaused == value) return;
+    _isVoiceFeedbackPaused = value;
+    _voiceAnnouncer.setPaused(value);
   }
 
   @override
