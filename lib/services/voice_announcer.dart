@@ -119,6 +119,7 @@ class VoiceAnnouncer {
   DateTime _lastAnnouncement = DateTime.fromMillisecondsSinceEpoch(0);
   String? _lastMessage;
   VoiceSettings _settings;
+  bool _isPaused = false;
 
   Future<void> _configure() async {
     try {
@@ -137,7 +138,7 @@ class VoiceAnnouncer {
     ProcessedDetections insights = ProcessedDetections.empty,
     SafetyAlerts alerts = const SafetyAlerts(),
   }) async {
-    if (!isVoiceEnabled) {
+    if (!isVoiceEnabled || _isPaused) {
       _lastMessage = null;
       unawaited(_safeStop());
       return;
@@ -170,6 +171,15 @@ class VoiceAnnouncer {
   }
 
   Future<void> stop() => _safeStop();
+
+  void setPaused(bool value) {
+    if (_isPaused == value) return;
+    _isPaused = value;
+    _lastMessage = null;
+    if (value) {
+      unawaited(_safeStop());
+    }
+  }
 
   Future<void> updateSettings(VoiceSettings settings) async {
     _settings = settings;
@@ -257,12 +267,10 @@ class VoiceAnnouncer {
     }
 
     final base = 'Veo ${descriptions.join(', ')}.';
-    final movement = insights.hasMovementWarnings
-        ? ' Peligro en movimiento: ${insights.movementWarnings.join(', ')}.'
-        : '';
+    final movement = _describeMovementWarnings(insights) ?? '';
 
     final obstacle = insights.hasCloseObstacle
-        ? ' Obstáculo cercano detectado: ${insights.closeObstacleLabels.join(', ')}.'
+        ? ' Obstáculo cercano detectado: ${_localizeLabels(insights.closeObstacleLabels).join(', ')}.'
         : '';
 
     final traffic = _describeTrafficLight(insights.trafficLightSignal);
@@ -428,16 +436,49 @@ class VoiceAnnouncer {
 
     return normalized;
   }
-}
 
-String? _describeTrafficLight(TrafficLightSignal signal) {
-  switch (signal) {
-    case TrafficLightSignal.green:
-      return 'Semáforo en verde, es seguro avanzar con precaución.';
-    case TrafficLightSignal.red:
-      return 'Semáforo en rojo, detente y espera.';
-    case TrafficLightSignal.unknown:
+  Iterable<String> _localizeLabels(Iterable<String> labels) sync* {
+    for (final label in labels) {
+      yield _localizeLabel(label);
+    }
+  }
+
+  String? _describeTrafficLight(TrafficLightSignal signal) {
+    switch (signal) {
+      case TrafficLightSignal.green:
+        return 'Semáforo en verde, es seguro avanzar con precaución.';
+      case TrafficLightSignal.red:
+        return 'Semáforo en rojo, detente y espera.';
+      case TrafficLightSignal.unknown:
+        return null;
+    }
+  }
+
+  String? _describeMovementWarnings(ProcessedDetections insights) {
+    if (!insights.hasMovementWarnings) {
       return null;
+    }
+
+    final localized = insights.movementWarnings
+        .map(_localizeMovementWarning)
+        .where((warning) => warning.isNotEmpty)
+        .toList();
+
+    if (localized.isEmpty) {
+      return null;
+    }
+
+    return ' Peligro en movimiento: ${localized.join(', ')}.';
+  }
+
+  String _localizeMovementWarning(String warning) {
+    const suffix = ' acercándose rápidamente';
+    if (warning.endsWith(suffix)) {
+      final label = warning.substring(0, warning.length - suffix.length).trim();
+      final localizedLabel = _localizeLabel(label);
+      return '$localizedLabel$suffix';
+    }
+    return warning;
   }
 }
 

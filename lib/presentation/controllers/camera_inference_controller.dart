@@ -50,6 +50,7 @@ class CameraInferenceController extends ChangeNotifier {
   String? _voiceCommandStatus;
   bool _areControlsLocked = false;
   bool _isListeningForCommand = false;
+  bool _isVoiceFeedbackPaused = false;
 
   // Controllers
   final _yoloController = YOLOViewController();
@@ -195,7 +196,7 @@ class CameraInferenceController extends ChangeNotifier {
     unawaited(
       _voiceAnnouncer.processDetections(
         filtered,
-        isVoiceEnabled: _isVoiceEnabled,
+        isVoiceEnabled: _isVoiceEnabled && !_isVoiceFeedbackPaused,
         insights: processed,
         alerts: _safetyAlerts,
       ),
@@ -545,6 +546,7 @@ class CameraInferenceController extends ChangeNotifier {
     if (_isDisposed) return;
 
     _isListeningForCommand = true;
+    _setVoiceFeedbackPaused(true);
     _voiceCommandStatus = 'Preparando micrófono...';
     notifyListeners();
 
@@ -552,6 +554,7 @@ class CameraInferenceController extends ChangeNotifier {
       onResult: (text) {
         if (_isDisposed) return;
         _isListeningForCommand = false;
+        _setVoiceFeedbackPaused(false);
         notifyListeners();
         handleVoiceCommand(text);
       },
@@ -560,15 +563,18 @@ class CameraInferenceController extends ChangeNotifier {
         _isListeningForCommand = false;
         _voiceCommandStatus = message;
         notifyListeners();
+        _setVoiceFeedbackPaused(false);
       },
       onStatus: (listening) {
         if (_isDisposed) return;
         _isListeningForCommand = listening;
         if (listening) {
           _voiceCommandStatus = 'Escuchando...';
+          _setVoiceFeedbackPaused(true);
         } else if (_voiceCommandStatus == 'Escuchando...' ||
             _voiceCommandStatus == 'Preparando micrófono...') {
           _voiceCommandStatus = null;
+          _setVoiceFeedbackPaused(false);
         }
         notifyListeners();
       },
@@ -577,6 +583,7 @@ class CameraInferenceController extends ChangeNotifier {
     if (!started && !_isDisposed) {
       _isListeningForCommand = false;
       _voiceCommandStatus ??= 'No fue posible iniciar la escucha.';
+      _setVoiceFeedbackPaused(false);
       notifyListeners();
     }
   }
@@ -587,6 +594,7 @@ class CameraInferenceController extends ChangeNotifier {
 
     final wasListening = _isListeningForCommand;
     _isListeningForCommand = false;
+    _setVoiceFeedbackPaused(false);
     _voiceCommandStatus = wasListening ? 'Escucha cancelada.' : _voiceCommandStatus;
     notifyListeners();
   }
@@ -755,6 +763,12 @@ class CameraInferenceController extends ChangeNotifier {
       insights: ProcessedDetections.empty,
       alerts: SafetyAlerts(connectionAlert: message),
     );
+  }
+
+  void _setVoiceFeedbackPaused(bool value) {
+    if (_isVoiceFeedbackPaused == value) return;
+    _isVoiceFeedbackPaused = value;
+    _voiceAnnouncer.setPaused(value);
   }
 
   @override
