@@ -552,6 +552,32 @@ class CameraInferenceController extends ChangeNotifier {
     return false;
   }
 
+  String _normalizeCommandText(String command) {
+    var normalized = command.toLowerCase();
+    normalized = normalized
+        .replaceAll(RegExp(r'[^a-z0-9áéíóúüñ ]'), ' ')
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ü', 'u')
+        .replaceAll('ñ', 'n')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return normalized;
+  }
+
+  bool _containsAny(String text, Iterable<String> patterns) {
+    for (final pattern in patterns) {
+      if (pattern.isEmpty) continue;
+      if (text.contains(pattern)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> _startVoiceCommand() async {
     if (_isDisposed) return;
 
@@ -564,6 +590,7 @@ class CameraInferenceController extends ChangeNotifier {
       onResult: (text) {
         if (_isDisposed) return;
         _isListeningForCommand = false;
+        _setVoiceFeedbackPaused(false);
         notifyListeners();
         unawaited(_processVoiceCommandResult(text));
       },
