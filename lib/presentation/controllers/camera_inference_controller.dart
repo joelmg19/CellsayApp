@@ -367,7 +367,7 @@ class CameraInferenceController extends ChangeNotifier {
   Future<void> handleVoiceCommand(String command) async {
     if (_isDisposed) return;
 
-    final normalized = _normalizeCommandText(command);
+    final normalized = _normalizeVoiceCommand(command);
     if (normalized.isEmpty) {
       return;
     }
@@ -379,7 +379,7 @@ class CameraInferenceController extends ChangeNotifier {
     final textKeywords = ['letra', 'letras', 'fuente', 'texto', 'tamano', 'tamanos'];
     final voiceKeywords = ['voz', 'narr', 'locucion', 'audio', 'asistente'];
 
-    if (_containsAny(normalized, [
+    if (_commandContainsAny(normalized, [
       'repite',
       'repitelo',
       'repetir',
@@ -393,7 +393,7 @@ class CameraInferenceController extends ChangeNotifier {
       feedback = 'Repitiendo la última instrucción.';
       repeatInstruction = true;
     } else if (
-        _containsAny(normalized, [
+        _commandContainsAny(normalized, [
               'sube',
               'aumenta',
               'incrementa',
@@ -409,12 +409,12 @@ class CameraInferenceController extends ChangeNotifier {
               'crece',
               'agrandar',
             ]) &&
-            _containsAny(normalized, textKeywords)) {
+            _commandContainsAny(normalized, textKeywords)) {
       recognized = true;
       increaseFontScale();
       feedback = 'Aumentando tamaño de texto.';
     } else if (
-        _containsAny(normalized, [
+        _commandContainsAny(normalized, [
               'baja',
               'bajar',
               'disminuye',
@@ -430,11 +430,11 @@ class CameraInferenceController extends ChangeNotifier {
               'menor',
               'encoge',
             ]) &&
-            _containsAny(normalized, textKeywords)) {
+            _commandContainsAny(normalized, textKeywords)) {
       recognized = true;
       decreaseFontScale();
       feedback = 'Reduciendo tamaño de texto.';
-    } else if (_containsAny(normalized, [
+    } else if (_commandContainsAny(normalized, [
       'ayuda',
       'ayudame',
       'que puedes hacer',
@@ -446,22 +446,22 @@ class CameraInferenceController extends ChangeNotifier {
       feedback =
           'Puedes pedirme que repita instrucciones, cambiar el tamaño de texto, activar o desactivar la narración, conocer los objetos detectados, preguntar la hora o consultar el clima.';
     } else if (
-        _containsAny(normalized, ['activa', 'enciende', 'habilita', 'activar', 'pon', 'enciendelo', 'prende']) &&
-            _containsAny(normalized, voiceKeywords)) {
+        _commandContainsAny(normalized, ['activa', 'enciende', 'habilita', 'activar', 'pon', 'enciendelo', 'prende']) &&
+            _commandContainsAny(normalized, voiceKeywords)) {
       recognized = true;
       if (!_isVoiceEnabled) {
         toggleVoice();
       }
       feedback = _isVoiceEnabled ? null : 'Narración activada.';
     } else if (
-        _containsAny(normalized, ['desactiva', 'apaga', 'silencia', 'silencio', 'deshabilita', 'quita', 'calla', 'apagala']) &&
-            _containsAny(normalized, voiceKeywords)) {
+        _commandContainsAny(normalized, ['desactiva', 'apaga', 'silencia', 'silencio', 'deshabilita', 'quita', 'calla', 'apagala']) &&
+            _commandContainsAny(normalized, voiceKeywords)) {
       recognized = true;
       if (_isVoiceEnabled) {
         toggleVoice();
       }
       feedback = !_isVoiceEnabled ? null : 'Narración desactivada.';
-    } else if (_containsAny(normalized, [
+    } else if (_commandContainsAny(normalized, [
       'detecta',
       'deteccion',
       'objeto',
@@ -480,7 +480,7 @@ class CameraInferenceController extends ChangeNotifier {
       final detectionMessage =
           count > 0 ? 'Detecto $count $objectLabel.' : 'No detecto objetos ahora.';
       feedback = detectionMessage;
-    } else if (_containsAny(normalized, [
+    } else if (_commandContainsAny(normalized, [
       'hora',
       'que hora es',
       'dime la hora',
@@ -492,7 +492,7 @@ class CameraInferenceController extends ChangeNotifier {
       recognized = true;
       final timeMessage = 'Son las $formattedTime.';
       feedback = timeMessage;
-    } else if (_containsAny(normalized, [
+    } else if (_commandContainsAny(normalized, [
       'clima',
       'tiempo',
       'pronostico',
@@ -526,7 +526,7 @@ class CameraInferenceController extends ChangeNotifier {
     }
   }
 
-  String _normalizeCommandText(String command) {
+  String _normalizeVoiceCommand(String command) {
     var normalized = command.toLowerCase();
     normalized = normalized
         .replaceAll(RegExp(r'[^a-z0-9áéíóúüñ ]'), ' ')
@@ -542,33 +542,7 @@ class CameraInferenceController extends ChangeNotifier {
     return normalized;
   }
 
-  bool _containsAny(String text, Iterable<String> patterns) {
-    for (final pattern in patterns) {
-      if (pattern.isEmpty) continue;
-      if (text.contains(pattern)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  String _normalizeCommandText(String command) {
-    var normalized = command.toLowerCase();
-    normalized = normalized
-        .replaceAll(RegExp(r'[^a-z0-9áéíóúüñ ]'), ' ')
-        .replaceAll('á', 'a')
-        .replaceAll('é', 'e')
-        .replaceAll('í', 'i')
-        .replaceAll('ó', 'o')
-        .replaceAll('ú', 'u')
-        .replaceAll('ü', 'u')
-        .replaceAll('ñ', 'n')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    return normalized;
-  }
-
-  bool _containsAny(String text, Iterable<String> patterns) {
+  bool _commandContainsAny(String text, Iterable<String> patterns) {
     for (final pattern in patterns) {
       if (pattern.isEmpty) continue;
       if (text.contains(pattern)) {
