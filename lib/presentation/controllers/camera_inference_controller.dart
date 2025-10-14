@@ -7,6 +7,10 @@ import 'package:intl/intl.dart';
 import 'package:ultralytics_yolo/models/yolo_result.dart';
 import 'package:ultralytics_yolo/utils/error_handler.dart';
 import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
+import '../../core/vision/detection_distance_extension.dart';
+import '../../core/vision/detection_geometry.dart';
+import '../../core/vision/distance_estimator.dart';
+import '../../core/vision/distance_estimator_provider.dart';
 import '../../models/detection_insight.dart';
 import '../../models/models.dart';
 import '../../models/voice_settings.dart';
@@ -60,6 +64,10 @@ class CameraInferenceController extends ChangeNotifier {
   final VoiceAnnouncer _voiceAnnouncer = VoiceAnnouncer();
   final VoiceCommandService _voiceCommandService = VoiceCommandService();
   final WeatherService _weatherService = WeatherService();
+  final DistanceEstimatorProvider _distanceEstimatorProvider =
+      DistanceEstimatorProvider();
+  DistanceEstimator? _distanceEstimator;
+  bool _loggedMissingDistanceEstimator = false;
 
   // Performance optimization
   bool _isDisposed = false;
@@ -117,6 +125,7 @@ class CameraInferenceController extends ChangeNotifier {
     _statusTimer =
         Timer.periodic(const Duration(seconds: 1), (_) => _onStatusTick());
     unawaited(_refreshWeather());
+    unawaited(_loadDistanceEstimator());
   }
 
   /// Initialize the controller
@@ -134,6 +143,7 @@ class CameraInferenceController extends ChangeNotifier {
   void onDetectionResults(List<YOLOResult> results) {
     if (_isDisposed) return;
 
+    _annotateDistances(results);
     _frameCount++;
     final now = DateTime.now();
     final elapsed = now.difference(_lastFpsUpdate).inMilliseconds;
@@ -220,6 +230,84 @@ class CameraInferenceController extends ChangeNotifier {
     if ((_currentZoomLevel - zoomLevel).abs() > 0.01) {
       _currentZoomLevel = zoomLevel;
       notifyListeners();
+    }
+  }
+
+  void _annotateDistances(List<YOLOResult> results) {
+    if (results.isEmpty) return;
+
+    final estimator = _distanceEstimator;
+    if (estimator == null) {
+      if (!_loggedMissingDistanceEstimator) {
+        debugPrint(
+          'DistanceEstimator: estimador no disponible, se omite el cálculo de distancias.',
+        );
+        _loggedMissingDistanceEstimator = true;
+      }
+      for (final result in results) {
+        result.distanceM = null;
+      }
+      return;
+    }
+
+    for (final result in results) {
+      final label = extractLabel(result).toLowerCase();
+      final rect = extractBoundingBox(result);
+      final imageHeight = extractImageHeightPx(result);
+
+      if (rect == null) {
+        debugPrint('DistanceEstimator: sin bounding box para $label.');
+        result.distanceM = null;
+        continue;
+      }
+
+      if (imageHeight == null || imageHeight <= 0) {
+        debugPrint('DistanceEstimator: sin altura de imagen para $label.');
+        result.distanceM = null;
+        continue;
+      }
+
+      var bboxHeightRelative = rect.height;
+      if (bboxHeightRelative.isNaN || bboxHeightRelative.isInfinite ||
+          bboxHeightRelative <= 0) {
+        debugPrint('DistanceEstimator: altura inválida de bounding box para $label.');
+        result.distanceM = null;
+        continue;
+      }
+
+      double bboxHeightPx;
+      if (bboxHeightRelative > 1.0) {
+        bboxHeightPx = bboxHeightRelative;
+        bboxHeightRelative = bboxHeightPx / imageHeight;
+      } else {
+        bboxHeightRelative = bboxHeightRelative.clamp(0.0, 1.0);
+        bboxHeightPx = bboxHeightRelative * imageHeight;
+      }
+
+      if (bboxHeightPx <= 1) {
+        debugPrint(
+          'DistanceEstimator: bounding box muy pequeño para $label (bboxHeightPx=${bboxHeightPx.toStringAsFixed(2)}).',
+        );
+        result.distanceM = null;
+        continue;
+      }
+
+      final distance = estimator.distanceMeters(
+        detectedClass: label,
+        bboxHeightRelative: bboxHeightRelative,
+        imageHeightPx: imageHeight,
+      );
+
+      if (distance == null) {
+        debugPrint(
+          'DistanceEstimator: no se puede estimar distancia para $label (bboxHeightPx=${bboxHeightPx.toStringAsFixed(2)}).',
+        );
+      }
+
+      result.distanceM = distance;
+      debugPrint(
+        'DistanceEstimator: clase=$label bboxHeightPx=${bboxHeightPx.toStringAsFixed(2)} distanceM=${distance?.toStringAsFixed(2) ?? 'null'}.',
+      );
     }
   }
 
@@ -776,6 +864,25 @@ class CameraInferenceController extends ChangeNotifier {
       unawaited(
         _announceSystemMessage('No fue posible obtener el clima actual.'),
       );
+    }
+  }
+
+  Future<void> _loadDistanceEstimator() async {
+    try {
+      final estimator = await _distanceEstimatorProvider.load();
+      if (_isDisposed) return;
+      _distanceEstimator = estimator;
+      if (estimator == null) {
+        debugPrint(
+          'DistanceEstimator: no se pudo cargar la calibración, se omiten las distancias.',
+        );
+      } else {
+        _loggedMissingDistanceEstimator = false;
+      }
+    } catch (error, stackTrace) {
+      if (_isDisposed) return;
+      debugPrint('DistanceEstimator: error al cargar calibración - $error');
+      debugPrint('$stackTrace');
     }
   }
 

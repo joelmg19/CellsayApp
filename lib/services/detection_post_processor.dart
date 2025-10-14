@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:ui';
 import 'package:ultralytics_yolo/models/yolo_result.dart';
+import '../core/vision/detection_geometry.dart';
 import '../models/detection_insight.dart';
 
 /// Applies additional post processing to YOLO detections improving NMS
@@ -160,9 +161,9 @@ class _DetectionCandidate {
   final TrafficLightSignal trafficLightSignal;
 
   factory _DetectionCandidate.fromResult(YOLOResult result) {
-    final rect = _extractRect(result);
-    final confidence = _extractConfidence(result) ?? 0.0;
-    final label = _extractLabel(result);
+    final rect = extractBoundingBox(result);
+    final confidence = extractConfidence(result) ?? 0.0;
+    final label = extractLabel(result);
     final signal = _inferTrafficLightSignal(result, label);
 
     if (rect == null) {
@@ -199,80 +200,6 @@ class _TrackedDetection {
   }
 }
 
-Rect? _extractRect(YOLOResult result) {
-  final dynamic dynamicResult = result;
-  Rect? rect;
-  rect ??= _rectFromDynamic(() => dynamicResult.box as Rect?);
-  rect ??= _rectFromDynamic(() => dynamicResult.boundingBox as Rect?);
-  rect ??= _rectFromDynamic(() => dynamicResult.rect as Rect?);
-  rect ??= _rectFromDynamic(() => dynamicResult.bbox as Rect?);
-
-  if (rect != null) return rect;
-
-  final map = _mapRepresentation(dynamicResult);
-  if (map == null) return null;
-
-  final left = _toDouble(map['left'] ?? map['x']);
-  final top = _toDouble(map['top'] ?? map['y']);
-  final right = _toDouble(map['right']);
-  final bottom = _toDouble(map['bottom']);
-  final width = _toDouble(map['width']);
-  final height = _toDouble(map['height']);
-
-  if ([left, top, right, bottom].every((value) => value != null)) {
-    return Rect.fromLTRB(left!, top!, right!, bottom!);
-  }
-  if (left != null && top != null && width != null && height != null) {
-    return Rect.fromLTWH(left, top, width, height);
-  }
-  return null;
-}
-
-dynamic _mapRepresentation(dynamic value) {
-  try {
-    if (value is Map) return value;
-    if (value?.toJson != null) {
-      return value.toJson();
-    }
-  } catch (_) {}
-  return null;
-}
-
-Rect? _rectFromDynamic(Rect? Function() getter) {
-  try {
-    return getter();
-  } catch (_) {
-    return null;
-  }
-}
-
-String _extractLabel(YOLOResult result) {
-  try {
-    final label = (result.className as String?)?.trim();
-    if (label != null && label.isNotEmpty) {
-      return label;
-    }
-  } catch (_) {}
-  return 'objeto';
-}
-
-double? _extractConfidence(YOLOResult result) {
-  final dynamic dynamicResult = result;
-  try {
-    final value = dynamicResult.confidence;
-    return _toDouble(value);
-  } catch (_) {}
-  try {
-    final value = dynamicResult.score;
-    return _toDouble(value);
-  } catch (_) {}
-  final map = _mapRepresentation(dynamicResult);
-  if (map is Map) {
-    return _toDouble(map['confidence'] ?? map['score']);
-  }
-  return null;
-}
-
 TrafficLightSignal _inferTrafficLightSignal(YOLOResult result, String label) {
   final normalizedLabel = label.toLowerCase();
   if (normalizedLabel.contains('semaforo') || normalizedLabel.contains('traffic')) {
@@ -299,7 +226,7 @@ TrafficLightSignal _inferTrafficLightSignal(YOLOResult result, String label) {
   } catch (_) {}
 
   final map = _mapRepresentation(dynamicResult);
-  if (map is Map) {
+  if (map != null) {
     final colorString = map['color']?.toString().toLowerCase();
     if (colorString != null) {
       if (colorString.contains('red') || colorString.contains('rojo')) {
@@ -314,10 +241,16 @@ TrafficLightSignal _inferTrafficLightSignal(YOLOResult result, String label) {
   return TrafficLightSignal.unknown;
 }
 
-double? _toDouble(dynamic value) {
-  if (value is double) return value;
-  if (value is int) return value.toDouble();
-  if (value is num) return value.toDouble();
-  if (value is String) return double.tryParse(value);
+Map<String, dynamic>? _mapRepresentation(dynamic value) {
+  try {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, dynamic val) => MapEntry('$key', val));
+    }
+    final jsonValue = value?.toJson();
+    if (jsonValue is Map) {
+      return jsonValue.map((key, dynamic val) => MapEntry('$key', val));
+    }
+  } catch (_) {}
   return null;
 }
