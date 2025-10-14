@@ -110,7 +110,7 @@ double? extractConfidence(YOLOResult result) {
   } catch (_) {}
 
   final map = _mapRepresentation(dynamicResult);
-  if (map is Map) {
+  if (map != null) {
     return _toDouble(map['confidence'] ?? map['score']);
   }
   return null;
@@ -185,9 +185,9 @@ double? _dimensionCandidateToDouble(dynamic candidate) {
 
 /// Utility to clamp bounding boxes to a sensible range for debugging purposes.
 Rect clampRect(Rect rect) {
-  final left = rect.left.clamp(0.0, 1.0);
-  final top = rect.top.clamp(0.0, 1.0);
-  final right = rect.right.clamp(0.0, max(1.0, rect.right));
-  final bottom = rect.bottom.clamp(0.0, max(1.0, rect.bottom));
+  final left = rect.left.clamp(0.0, 1.0).toDouble();
+  final top = rect.top.clamp(0.0, 1.0).toDouble();
+  final right = rect.right.clamp(0.0, max(1.0, rect.right)).toDouble();
+  final bottom = rect.bottom.clamp(0.0, max(1.0, rect.bottom)).toDouble();
   return Rect.fromLTRB(left, top, right, bottom);
 }

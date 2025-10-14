@@ -226,7 +226,7 @@ TrafficLightSignal _inferTrafficLightSignal(YOLOResult result, String label) {
   } catch (_) {}
 
   final map = _mapRepresentation(dynamicResult);
-  if (map is Map) {
+  if (map != null) {
     final colorString = map['color']?.toString().toLowerCase();
     if (colorString != null) {
       if (colorString.contains('red') || colorString.contains('rojo')) {
