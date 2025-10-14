@@ -564,6 +564,7 @@ class CameraInferenceController extends ChangeNotifier {
       onResult: (text) {
         if (_isDisposed) return;
         _isListeningForCommand = false;
+        _setVoiceFeedbackPaused(false);
         notifyListeners();
         unawaited(_processVoiceCommandResult(text));
       },
