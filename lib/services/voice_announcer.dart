@@ -111,7 +111,7 @@ const Map<String, String> _labelTranslations = {
 
 class VoiceAnnouncer {
   VoiceAnnouncer({VoiceSettings initialSettings = const VoiceSettings()})
-      : _settings = initialSettings {
+      : _settings = initialSettings.validated() {
     _initialization = _configure();
   }
 
@@ -127,10 +127,12 @@ class VoiceAnnouncer {
 
   Future<void> _configure() async {
     try {
-      await _tts.setLanguage(_settings.language);
-      await _tts.setSpeechRate(_settings.speechRate);
-      await _tts.setPitch(_settings.pitch);
-      await _tts.setVolume(_settings.volume);
+      final validSettings = _settings.validated();
+      _settings = validSettings;
+      await _tts.setLanguage(validSettings.language);
+      await _tts.setSpeechRate(validSettings.speechRate);
+      await _tts.setPitch(validSettings.pitch);
+      await _tts.setVolume(validSettings.volume);
     } catch (_) {
       // Ignore configuration errors to avoid crashing voice flow.
     }
@@ -148,14 +150,10 @@ class VoiceAnnouncer {
       return;
     }
 
-    final init = _initialization;
-    if (init != null) {
-      await init;
-      _initialization = null;
-    }
+    await _ensureConfigured();
 
     final now = DateTime.now();
-    if (now.difference(_lastAnnouncement) < _minimumPause) {
+    if (_shouldRespectCooldown(now)) {
       return;
     }
 
@@ -164,14 +162,7 @@ class VoiceAnnouncer {
       return;
     }
 
-    try {
-      await _safeStop();
-      await _tts.speak(message);
-      _lastAnnouncement = DateTime.now();
-      _lastMessage = message;
-    } catch (_) {
-      // Ignore speak failures to keep detection loop running.
-    }
+    await _speak(message);
   }
 
   Future<void> stop() => _safeStop();
@@ -186,18 +177,18 @@ class VoiceAnnouncer {
   }
 
   Future<void> updateSettings(VoiceSettings settings) async {
-    _settings = settings;
+    _settings = settings.validated();
     try {
-      await _tts.setLanguage(settings.language);
+      await _tts.setLanguage(_settings.language);
     } catch (_) {}
     try {
-      await _tts.setSpeechRate(settings.speechRate);
+      await _tts.setSpeechRate(_settings.speechRate);
     } catch (_) {}
     try {
-      await _tts.setPitch(settings.pitch);
+      await _tts.setPitch(_settings.pitch);
     } catch (_) {}
     try {
-      await _tts.setVolume(settings.volume);
+      await _tts.setVolume(_settings.volume);
     } catch (_) {}
   }
 
@@ -207,19 +198,67 @@ class VoiceAnnouncer {
       return;
     }
     try {
-      await _safeStop();
-      await _tts.speak(message);
-      _lastAnnouncement = DateTime.now();
+      await _speak(message, storeAsLastMessage: false);
     } catch (_) {}
   }
 
   String? get lastMessage => _lastMessage;
+
+  Future<void> speakMessage(
+    String message, {
+    bool bypassCooldown = false,
+    bool storeAsLastMessage = true,
+  }) async {
+    if (message.trim().isEmpty || _isPaused) {
+      return;
+    }
+
+    await _ensureConfigured();
+
+    final now = DateTime.now();
+    if (!bypassCooldown && _shouldRespectCooldown(now)) {
+      return;
+    }
+
+    await _speak(
+      message,
+      storeAsLastMessage: storeAsLastMessage,
+    );
+  }
 
   Future<void> _safeStop() async {
     try {
       await _tts.stop();
     } catch (_) {
       // Ignore stop failures.
+    }
+  }
+
+  Future<void> _ensureConfigured() async {
+    final init = _initialization;
+    if (init != null) {
+      await init;
+      _initialization = null;
+    }
+  }
+
+  bool _shouldRespectCooldown(DateTime now) {
+    return now.difference(_lastAnnouncement) < _minimumPause;
+  }
+
+  Future<void> _speak(
+    String message, {
+    bool storeAsLastMessage = true,
+  }) async {
+    try {
+      await _safeStop();
+      await _tts.speak(message);
+      _lastAnnouncement = DateTime.now();
+      if (storeAsLastMessage) {
+        _lastMessage = message;
+      }
+    } catch (_) {
+      // Ignore speak failures to keep detection loop running.
     }
   }
 

@@ -23,7 +23,7 @@ class _VoiceSettingsSheetState extends State<VoiceSettingsSheet> {
   @override
   void initState() {
     super.initState();
-    _current = widget.initialSettings;
+    _current = widget.initialSettings.validated();
   }
 
   @override
@@ -116,10 +116,11 @@ class _VoiceSettingsSheetState extends State<VoiceSettingsSheet> {
   }
 
   void _updateSettings(VoiceSettings settings) {
+    final validated = settings.validated();
     setState(() {
-      _current = settings;
+      _current = validated;
     });
-    widget.onChanged(settings);
+    widget.onChanged(validated);
   }
 
   void _resetDefaults() {

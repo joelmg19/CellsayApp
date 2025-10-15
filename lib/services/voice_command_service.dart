@@ -84,6 +84,10 @@ class VoiceCommandService {
     Duration listenFor = const Duration(seconds: 8),
     Duration pauseFor = const Duration(seconds: 3),
   }) async {
+    if (_speechToText.isListening) {
+      await _speechToText.stop();
+    }
+
     final available = await _ensureInitialized(onError: onError, onStatus: onStatus);
     if (!available) {
       onError('El reconocimiento de voz no está disponible.');
@@ -91,6 +95,18 @@ class VoiceCommandService {
     }
 
     final localeId = _cachedLocale ?? 'es_ES';
+    final safeListenFor = _sanitizeDuration(
+      listenFor,
+      min: const Duration(seconds: 3),
+      max: const Duration(seconds: 20),
+      fallback: const Duration(seconds: 8),
+    );
+    final safePauseFor = _sanitizeDuration(
+      pauseFor,
+      min: const Duration(seconds: 1),
+      max: const Duration(seconds: 8),
+      fallback: const Duration(seconds: 3),
+    );
 
     try {
       final started = await _speechToText.listen(
@@ -105,8 +121,8 @@ class VoiceCommandService {
             onResult(recognized);
           }
         },
-        listenFor: listenFor,
-        pauseFor: pauseFor,
+        listenFor: safeListenFor,
+        pauseFor: safePauseFor,
         partialResults: false,
         localeId: localeId,
       );
@@ -139,5 +155,24 @@ class VoiceCommandService {
 
   Future<void> dispose() async {
     await cancelListening();
+  }
+
+  Duration _sanitizeDuration(
+    Duration value, {
+    required Duration min,
+    required Duration max,
+    required Duration fallback,
+  }) {
+    final milliseconds = value.inMilliseconds;
+    if (milliseconds <= 0) {
+      return fallback;
+    }
+    if (milliseconds < min.inMilliseconds) {
+      return min;
+    }
+    if (milliseconds > max.inMilliseconds) {
+      return max;
+    }
+    return value;
   }
 }

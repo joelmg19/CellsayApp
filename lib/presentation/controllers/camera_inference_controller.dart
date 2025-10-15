@@ -377,17 +377,24 @@ class CameraInferenceController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleVoice() {
+  void toggleVoice({bool announce = true}) {
     if (_isDisposed || _areControlsLocked) return;
 
     _isVoiceEnabled = !_isVoiceEnabled;
     if (!_isVoiceEnabled) {
       unawaited(_voiceAnnouncer.stop());
     }
-    _voiceCommandStatus =
+    final status =
         _isVoiceEnabled ? 'Narración activada.' : 'Narración desactivada.';
-    if (_isVoiceEnabled) {
-      unawaited(_announceSystemMessage(_voiceCommandStatus!));
+    _voiceCommandStatus = status;
+    if (announce) {
+      unawaited(
+        _announceSystemMessage(
+          status,
+          force: true,
+          bypassCooldown: true,
+        ),
+      );
     }
     notifyListeners();
   }
@@ -537,18 +544,22 @@ class CameraInferenceController extends ChangeNotifier {
         _commandContainsAny(normalized, ['activa', 'enciende', 'habilita', 'activar', 'pon', 'enciendelo', 'prende']) &&
             _commandContainsAny(normalized, voiceKeywords)) {
       recognized = true;
-      if (!_isVoiceEnabled) {
-        toggleVoice();
+      if (_isVoiceEnabled) {
+        feedback = 'La narración ya está activada.';
+      } else {
+        toggleVoice(announce: false);
+        feedback = 'Narración activada.';
       }
-      feedback = _isVoiceEnabled ? null : 'Narración activada.';
     } else if (
         _commandContainsAny(normalized, ['desactiva', 'apaga', 'silencia', 'silencio', 'deshabilita', 'quita', 'calla', 'apagala']) &&
             _commandContainsAny(normalized, voiceKeywords)) {
       recognized = true;
       if (_isVoiceEnabled) {
-        toggleVoice();
+        toggleVoice(announce: false);
+        feedback = 'Narración desactivada.';
+      } else {
+        feedback = 'La narración ya estaba desactivada.';
       }
-      feedback = !_isVoiceEnabled ? null : 'Narración desactivada.';
     } else if (_commandContainsAny(normalized, [
       'detecta',
       'deteccion',
@@ -598,7 +609,11 @@ class CameraInferenceController extends ChangeNotifier {
     if (!recognized) {
       _voiceCommandStatus = 'Comando no reconocido.';
       notifyListeners();
-      await _announceSystemMessage('No entendí el comando.');
+      await _announceSystemMessage(
+        'No entendí el comando.',
+        force: true,
+        bypassCooldown: true,
+      );
       return;
     }
 
@@ -606,7 +621,11 @@ class CameraInferenceController extends ChangeNotifier {
     notifyListeners();
 
     if (feedback != null) {
-      await _announceSystemMessage(feedback);
+      await _announceSystemMessage(
+        feedback,
+        force: true,
+        bypassCooldown: true,
+      );
     }
 
     if (repeatInstruction) {
@@ -660,8 +679,15 @@ class CameraInferenceController extends ChangeNotifier {
         if (_isDisposed) return;
         _isListeningForCommand = false;
         _voiceCommandStatus = message;
-        notifyListeners();
         _setVoiceFeedbackPaused(false);
+        notifyListeners();
+        unawaited(
+          _announceSystemMessage(
+            message,
+            force: true,
+            bypassCooldown: true,
+          ),
+        );
       },
       onStatus: (listening) {
         if (_isDisposed) return;
@@ -684,6 +710,16 @@ class CameraInferenceController extends ChangeNotifier {
       _voiceCommandStatus ??= 'No fue posible iniciar la escucha.';
       _setVoiceFeedbackPaused(false);
       notifyListeners();
+      final status = _voiceCommandStatus;
+      if (status != null && status.isNotEmpty) {
+        unawaited(
+          _announceSystemMessage(
+            status,
+            force: true,
+            bypassCooldown: true,
+          ),
+        );
+      }
     }
   }
 
@@ -710,6 +746,15 @@ class CameraInferenceController extends ChangeNotifier {
     _setVoiceFeedbackPaused(false);
     _voiceCommandStatus = wasListening ? 'Escucha cancelada.' : _voiceCommandStatus;
     notifyListeners();
+    if (wasListening) {
+      unawaited(
+        _announceSystemMessage(
+          'Escucha cancelada.',
+          force: true,
+          bypassCooldown: true,
+        ),
+      );
+    }
   }
 
   void changeModel(ModelType model) {
@@ -855,14 +900,22 @@ class CameraInferenceController extends ChangeNotifier {
       if (force) {
         final summary = info.formatSummary();
         unawaited(
-          _announceSystemMessage('El clima actual es $summary'),
+          _announceSystemMessage(
+            'El clima actual es $summary',
+            force: force,
+            bypassCooldown: force,
+          ),
         );
       }
     } else if (force) {
       _voiceCommandStatus = 'No fue posible obtener el clima.';
       notifyListeners();
       unawaited(
-        _announceSystemMessage('No fue posible obtener el clima actual.'),
+        _announceSystemMessage(
+          'No fue posible obtener el clima actual.',
+          force: true,
+          bypassCooldown: true,
+        ),
       );
     }
   }
@@ -886,14 +939,16 @@ class CameraInferenceController extends ChangeNotifier {
     }
   }
 
-  Future<void> _announceSystemMessage(String message, {bool force = false}) async {
+  Future<void> _announceSystemMessage(
+    String message, {
+    bool force = false,
+    bool bypassCooldown = false,
+  }) async {
     if (!force && !_isVoiceEnabled) return;
 
-    await _voiceAnnouncer.processDetections(
-      const <YOLOResult>[],
-      isVoiceEnabled: true,
-      insights: ProcessedDetections.empty,
-      alerts: SafetyAlerts(connectionAlert: message),
+    await _voiceAnnouncer.speakMessage(
+      message,
+      bypassCooldown: bypassCooldown,
     );
   }
 
