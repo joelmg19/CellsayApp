@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// Configuration for the voice announcer.
 class VoiceSettings {
   const VoiceSettings({
@@ -25,4 +27,20 @@ class VoiceSettings {
       volume: volume ?? this.volume,
     );
   }
+
+  /// Returns a sanitized configuration keeping all parameters inside safe
+  /// ranges accepted by the voice engines.
+  VoiceSettings validated() {
+    final normalizedLanguage = language.trim().isEmpty ? 'es-ES' : language.trim();
+    return VoiceSettings(
+      language: normalizedLanguage,
+      speechRate: _clampDouble(speechRate, 0.2, 0.8),
+      pitch: _clampDouble(pitch, 0.7, 1.3),
+      volume: _clampDouble(volume, 0.2, 1.0),
+    );
+  }
+}
+
+double _clampDouble(double value, double min, double max) {
+  return math.max(min, math.min(max, value));
 }
