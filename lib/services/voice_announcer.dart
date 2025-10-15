@@ -124,6 +124,8 @@ class VoiceAnnouncer {
   String? _lastMessage;
   VoiceSettings _settings;
   bool _isPaused = false;
+  bool _isSpeaking = false;
+  _PendingSpeech? _pendingSpeech;
 
   Future<void> _configure() async {
     try {
@@ -133,6 +135,7 @@ class VoiceAnnouncer {
       await _tts.setSpeechRate(validSettings.speechRate);
       await _tts.setPitch(validSettings.pitch);
       await _tts.setVolume(validSettings.volume);
+      await _tts.awaitSpeakCompletion(true);
     } catch (_) {
       // Ignore configuration errors to avoid crashing voice flow.
     }
@@ -232,6 +235,7 @@ class VoiceAnnouncer {
     } catch (_) {
       // Ignore stop failures.
     }
+    _pendingSpeech = null;
   }
 
   Future<void> _ensureConfigured() async {
@@ -250,15 +254,33 @@ class VoiceAnnouncer {
     String message, {
     bool storeAsLastMessage = true,
   }) async {
+    final request = _PendingSpeech(message, storeAsLastMessage);
+
+    if (_isSpeaking) {
+      _pendingSpeech = request;
+      return;
+    }
+
+    await _playSpeech(request);
+  }
+
+  Future<void> _playSpeech(_PendingSpeech request) async {
+    _isSpeaking = true;
     try {
-      await _safeStop();
-      await _tts.speak(message);
+      await _tts.speak(request.message);
       _lastAnnouncement = DateTime.now();
-      if (storeAsLastMessage) {
-        _lastMessage = message;
+      if (request.storeAsLastMessage) {
+        _lastMessage = request.message;
       }
     } catch (_) {
       // Ignore speak failures to keep detection loop running.
+    } finally {
+      _isSpeaking = false;
+      final next = _pendingSpeech;
+      _pendingSpeech = null;
+      if (next != null) {
+        await _playSpeech(next);
+      }
     }
   }
 
@@ -417,4 +439,11 @@ class VoiceAnnouncer {
     }
     return warning;
   }
+}
+
+class _PendingSpeech {
+  const _PendingSpeech(this.message, this.storeAsLastMessage);
+
+  final String message;
+  final bool storeAsLastMessage;
 }
