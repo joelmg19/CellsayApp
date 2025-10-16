@@ -446,6 +446,40 @@ class CameraInferenceController extends ChangeNotifier {
     }
   }
 
+  void onVoiceCommandHoldStart() {
+    if (_isDisposed || _areControlsLocked) return;
+
+    if (_voiceCommandService.isListening || _isListeningForCommand) {
+      return;
+    }
+
+    unawaited(_startVoiceCommand());
+  }
+
+  void onVoiceCommandHoldEnd() {
+    if (_isDisposed) return;
+
+    if (_areControlsLocked) {
+      if (_isListeningForCommand || _voiceCommandService.isListening) {
+        unawaited(_cancelVoiceCommand());
+      }
+      return;
+    }
+
+    if (_voiceCommandService.isListening) {
+      _isListeningForCommand = false;
+      _voiceCommandStatus = 'Procesando comando...';
+      notifyListeners();
+      unawaited(_voiceCommandService.stopListening());
+    } else if (_isListeningForCommand) {
+      _isListeningForCommand = false;
+      _voiceCommandStatus = null;
+      _setVoiceFeedbackPaused(false);
+      notifyListeners();
+      unawaited(_voiceCommandService.cancelListening());
+    }
+  }
+
   void updateVoiceSettings(VoiceSettings settings) {
     if (_isDisposed) return;
 
