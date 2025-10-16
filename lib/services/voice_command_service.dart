@@ -121,7 +121,7 @@ class VoiceCommandService {
     try {
       final bool started;
       try {
-        started = await _speechToText.listen(
+        final dynamic result = await _speechToText.listen(
           onResult: (result) {
             if (!result.finalResult) {
               return;
@@ -138,6 +138,11 @@ class VoiceCommandService {
           partialResults: false,
           localeId: localeId,
         );
+        if (result is bool) {
+          started = result;
+        } else {
+          started = _speechToText.isListening;
+        }
       } on TypeError {
         onError(
           'El servicio de voz no pudo iniciar la escucha por una respuesta inválida.',
