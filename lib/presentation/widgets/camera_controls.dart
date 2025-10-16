@@ -21,7 +21,8 @@ class CameraControls extends StatelessWidget {
     required this.onFontDecrease,
     required this.onRepeatInstruction,
     required this.onVoiceSettings,
-    required this.onVoiceCommand,
+    required this.onVoiceCommandStart,
+    required this.onVoiceCommandEnd,
     required this.isListeningForCommand,
     required this.areControlsLocked,
     required this.onLockToggled,
@@ -40,7 +41,8 @@ class CameraControls extends StatelessWidget {
   final VoidCallback onFontDecrease;
   final VoidCallback onRepeatInstruction;
   final VoidCallback onVoiceSettings;
-  final VoidCallback onVoiceCommand;
+  final VoidCallback onVoiceCommandStart;
+  final VoidCallback onVoiceCommandEnd;
   final bool isListeningForCommand;
   final bool areControlsLocked;
   final VoidCallback onLockToggled;
@@ -114,10 +116,11 @@ class CameraControls extends StatelessWidget {
       ),
       ControlButton(
         content: Icons.mic,
-        onPressed: onVoiceCommand,
+        onPressStart: onVoiceCommandStart,
+        onPressEnd: onVoiceCommandEnd,
         tooltip: isListeningForCommand
-            ? 'Escuchando comando de voz'
-            : 'Iniciar comando de voz',
+            ? 'Suelta para enviar el comando'
+            : 'Mantén presionado para hablar',
         isDisabled: areControlsLocked,
         isActive: isListeningForCommand,
       ),

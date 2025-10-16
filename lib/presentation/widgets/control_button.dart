@@ -7,14 +7,18 @@ class ControlButton extends StatelessWidget {
   const ControlButton({
     super.key,
     required this.content,
-    required this.onPressed,
+    this.onPressed,
+    this.onPressStart,
+    this.onPressEnd,
     this.tooltip,
     this.isActive = false,
     this.isDisabled = false,
   });
 
   final dynamic content;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
+  final VoidCallback? onPressStart;
+  final VoidCallback? onPressEnd;
   final String? tooltip;
   final bool isActive;
   final bool isDisabled;
@@ -24,7 +28,22 @@ class ControlButton extends StatelessWidget {
     final button = Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: isDisabled ? null : onPressed,
+        onTap: isDisabled ? null : (onPressed ?? () {}),
+        onTapDown: isDisabled
+            ? null
+            : (_) {
+                onPressStart?.call();
+              },
+        onTapUp: isDisabled
+            ? null
+            : (_) {
+                onPressEnd?.call();
+              },
+        onTapCancel: isDisabled
+            ? null
+            : () {
+                onPressEnd?.call();
+              },
         borderRadius: BorderRadius.circular(16),
         child: Ink(
           width: 52,
