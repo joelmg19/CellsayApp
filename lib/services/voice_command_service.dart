@@ -35,21 +35,31 @@ class VoiceCommandService {
 
     _initializing = true;
     try {
-      _isAvailable = await _speechToText.initialize(
-        onStatus: (status) {
-          if (status == 'listening') {
-            onStatus?.call(true);
-          } else if (status == 'notListening') {
-            onStatus?.call(false);
-          }
-        },
-        onError: (error) {
-          final message = error.errorMsg.isNotEmpty
-              ? error.errorMsg
-              : 'Error desconocido en el reconocimiento de voz.';
-          onError?.call(message);
-        },
-      );
+      final bool initialized;
+      try {
+        initialized = await _speechToText.initialize(
+          onStatus: (status) {
+            if (status == 'listening') {
+              onStatus?.call(true);
+            } else if (status == 'notListening') {
+              onStatus?.call(false);
+            }
+          },
+          onError: (error) {
+            final message = error.errorMsg.isNotEmpty
+                ? error.errorMsg
+                : 'Error desconocido en el reconocimiento de voz.';
+            onError?.call(message);
+          },
+        );
+      } on TypeError {
+        onError?.call(
+          'El reconocimiento de voz no está disponible por una respuesta inválida del sistema.',
+        );
+        return false;
+      }
+
+      _isAvailable = initialized;
 
       if (_isAvailable && _cachedLocale == null) {
         final systemLocale = await _speechToText.systemLocale();
@@ -109,30 +119,39 @@ class VoiceCommandService {
     );
 
     try {
-      final started = await _speechToText.listen(
-        onResult: (result) {
-          if (!result.finalResult) {
-            return;
-          }
-          final recognized = result.recognizedWords.trim();
-          if (recognized.isEmpty) {
-            onError('No se escuchó ningún comando.');
-          } else {
-            onResult(recognized);
-          }
-        },
-        listenFor: safeListenFor,
-        pauseFor: safePauseFor,
-        partialResults: false,
-        localeId: localeId,
-      );
+      final bool started;
+      try {
+        started = await _speechToText.listen(
+          onResult: (result) {
+            if (!result.finalResult) {
+              return;
+            }
+            final recognized = result.recognizedWords.trim();
+            if (recognized.isEmpty) {
+              onError('No se escuchó ningún comando.');
+            } else {
+              onResult(recognized);
+            }
+          },
+          listenFor: safeListenFor,
+          pauseFor: safePauseFor,
+          partialResults: false,
+          localeId: localeId,
+        );
+      } on TypeError {
+        onError(
+          'El servicio de voz no pudo iniciar la escucha por una respuesta inválida.',
+        );
+        return false;
+      }
 
       if (!started) {
         onError('No se pudo iniciar la escucha.');
-      } else {
-        onStatus?.call(true);
+        return false;
       }
-      return started;
+
+      onStatus?.call(true);
+      return true;
     } catch (error) {
       onError('Error al iniciar la escucha: $error');
       return false;
