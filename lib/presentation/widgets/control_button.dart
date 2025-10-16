@@ -13,6 +13,12 @@ class ControlButton extends StatelessWidget {
     this.tooltip,
     this.isActive = false,
     this.isDisabled = false,
+    this.semanticsLabel,
+    this.semanticsHint,
+    this.semanticsValue,
+    this.isToggle = false,
+    this.semanticsOnTap,
+    this.semanticsOnLongPress,
   });
 
   final dynamic content;
@@ -22,10 +28,16 @@ class ControlButton extends StatelessWidget {
   final String? tooltip;
   final bool isActive;
   final bool isDisabled;
+  final String? semanticsLabel;
+  final String? semanticsHint;
+  final String? semanticsValue;
+  final bool isToggle;
+  final VoidCallback? semanticsOnTap;
+  final VoidCallback? semanticsOnLongPress;
 
   @override
   Widget build(BuildContext context) {
-    final button = Material(
+    final baseButton = Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: isDisabled ? null : (onPressed ?? () {}),
@@ -77,10 +89,30 @@ class ControlButton extends StatelessWidget {
       ),
     );
 
-    if (tooltip == null) {
-      return button;
-    }
-    return Tooltip(message: tooltip!, child: button);
+    final button = tooltip == null
+        ? baseButton
+        : Tooltip(message: tooltip!, child: baseButton);
+
+    final label = this.semanticsLabel ?? tooltip ?? _deriveLabelFromContent();
+
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      enabled: !isDisabled,
+      button: true,
+      label: label,
+      hint: semanticsHint,
+      value: semanticsValue,
+      toggled: isToggle ? isActive : null,
+      onTap: isDisabled
+          ? null
+          : semanticsOnTap ?? onPressed ?? _defaultSemanticTapHandler,
+      onLongPress: isDisabled
+          ? null
+          : semanticsOnLongPress ??
+              (onPressStart != null ? () => onPressStart!.call() : null),
+      child: button,
+    );
   }
 
   Widget _buildContent() {
@@ -96,5 +128,22 @@ class ControlButton extends StatelessWidget {
     }
 
     return const SizedBox.shrink();
+  }
+
+  VoidCallback get _defaultSemanticTapHandler {
+    if (onPressed != null) {
+      return onPressed!;
+    }
+    return () {
+      onPressStart?.call();
+      onPressEnd?.call();
+    };
+  }
+
+  String? _deriveLabelFromContent() {
+    if (content is String) {
+      return content as String;
+    }
+    return null;
   }
 }

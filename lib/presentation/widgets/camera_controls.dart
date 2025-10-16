@@ -17,12 +17,14 @@ class CameraControls extends StatelessWidget {
     required this.onVoiceToggled,
     required this.isVoiceEnabled,
     required this.isLandscape,
+    required this.fontScale,
     required this.onFontIncrease,
     required this.onFontDecrease,
     required this.onRepeatInstruction,
     required this.onVoiceSettings,
     required this.onVoiceCommandStart,
     required this.onVoiceCommandEnd,
+    required this.onVoiceCommandRequested,
     required this.isListeningForCommand,
     required this.areControlsLocked,
     required this.onLockToggled,
@@ -37,12 +39,14 @@ class CameraControls extends StatelessWidget {
   final VoidCallback onVoiceToggled;
   final bool isVoiceEnabled;
   final bool isLandscape;
+  final double fontScale;
   final VoidCallback onFontIncrease;
   final VoidCallback onFontDecrease;
   final VoidCallback onRepeatInstruction;
   final VoidCallback onVoiceSettings;
   final VoidCallback onVoiceCommandStart;
   final VoidCallback onVoiceCommandEnd;
+  final VoidCallback onVoiceCommandRequested;
   final bool isListeningForCommand;
   final bool areControlsLocked;
   final VoidCallback onLockToggled;
@@ -52,6 +56,7 @@ class CameraControls extends StatelessWidget {
     final padding = MediaQuery.of(context).padding;
     final bottomPadding = isLandscape ? 16.0 : 24.0;
     final wrapSpacing = isLandscape ? 10.0 : 14.0;
+    final fontPercentage = (fontScale * 100).round();
 
     final buttons = <Widget>[
       ControlButton(
@@ -61,24 +66,40 @@ class CameraControls extends StatelessWidget {
         tooltip: areControlsLocked
             ? 'Desbloquear controles'
             : 'Bloquear controles',
+        semanticsLabel:
+            areControlsLocked ? 'Controles bloqueados' : 'Controles desbloqueados',
+        semanticsHint: areControlsLocked
+            ? 'Doble toque para desbloquear los controles.'
+            : 'Doble toque para bloquear los controles.',
+        semanticsValue: areControlsLocked ? 'Bloqueados' : 'Desbloqueados',
+        isToggle: true,
       ),
       ControlButton(
         content: Icons.text_decrease,
         onPressed: onFontDecrease,
         tooltip: 'Reducir tamaño de texto',
         isDisabled: areControlsLocked,
+        semanticsLabel: 'Reducir tamaño de texto',
+        semanticsHint: 'Doble toque para reducir el tamaño del texto.',
+        semanticsValue: 'Tamaño actual $fontPercentage%',
       ),
       ControlButton(
         content: Icons.text_increase,
         onPressed: onFontIncrease,
         tooltip: 'Aumentar tamaño de texto',
         isDisabled: areControlsLocked,
+        semanticsLabel: 'Aumentar tamaño de texto',
+        semanticsHint: 'Doble toque para ampliar el tamaño del texto.',
+        semanticsValue: 'Tamaño actual $fontPercentage%',
       ),
       ControlButton(
         content: Icons.replay,
         onPressed: onRepeatInstruction,
         tooltip: 'Repetir última instrucción',
         isDisabled: areControlsLocked,
+        semanticsLabel: 'Repetir última instrucción de voz',
+        semanticsHint:
+            'Doble toque para escuchar nuevamente la última indicación del asistente.',
       ),
       if (!isFrontCamera)
         ControlButton(
@@ -92,6 +113,11 @@ class CameraControls extends StatelessWidget {
           ),
           tooltip: 'Cambiar zoom',
           isDisabled: areControlsLocked,
+          semanticsLabel:
+              'Zoom ${currentZoomLevel.toStringAsFixed(1)} aumentos',
+          semanticsHint: 'Doble toque para cambiar el nivel de zoom.',
+          semanticsValue:
+              'Nivel actual ${currentZoomLevel.toStringAsFixed(1)} veces',
         ),
       ControlButton(
         content: Icons.layers,
@@ -99,6 +125,12 @@ class CameraControls extends StatelessWidget {
         isActive: activeSlider == SliderType.numItems,
         tooltip: 'Límite de objetos',
         isDisabled: areControlsLocked,
+        semanticsLabel: 'Seleccionar límite de objetos',
+        semanticsHint:
+            'Doble toque para ajustar la cantidad máxima de objetos detectados.',
+        semanticsValue:
+            activeSlider == SliderType.numItems ? 'Seleccionado' : 'No seleccionado',
+        isToggle: true,
       ),
       ControlButton(
         content: Icons.adjust,
@@ -106,6 +138,13 @@ class CameraControls extends StatelessWidget {
         isActive: activeSlider == SliderType.confidence,
         tooltip: 'Umbral de confianza',
         isDisabled: areControlsLocked,
+        semanticsLabel: 'Seleccionar umbral de confianza',
+        semanticsHint:
+            'Doble toque para mostrar el control deslizante del nivel de confianza.',
+        semanticsValue: activeSlider == SliderType.confidence
+            ? 'Seleccionado'
+            : 'No seleccionado',
+        isToggle: true,
       ),
       ControlButton(
         content: 'assets/iou.png',
@@ -113,9 +152,16 @@ class CameraControls extends StatelessWidget {
         isActive: activeSlider == SliderType.iou,
         tooltip: 'Umbral IoU',
         isDisabled: areControlsLocked,
+        semanticsLabel: 'Seleccionar umbral de intersección sobre unión',
+        semanticsHint:
+            'Doble toque para ajustar la superposición mínima entre detecciones.',
+        semanticsValue:
+            activeSlider == SliderType.iou ? 'Seleccionado' : 'No seleccionado',
+        isToggle: true,
       ),
       ControlButton(
         content: Icons.mic,
+        onPressed: onVoiceCommandRequested,
         onPressStart: onVoiceCommandStart,
         onPressEnd: onVoiceCommandEnd,
         tooltip: isListeningForCommand
@@ -123,6 +169,12 @@ class CameraControls extends StatelessWidget {
             : 'Mantén presionado para hablar',
         isDisabled: areControlsLocked,
         isActive: isListeningForCommand,
+        semanticsLabel: 'Comandos de voz',
+        semanticsHint:
+            'Doble toque para alternar la escucha de comandos. Mantén presionado para dictar manualmente.',
+        semanticsValue:
+            isListeningForCommand ? 'Escuchando' : 'Inactivo',
+        isToggle: true,
       ),
       ControlButton(
         content: isVoiceEnabled ? Icons.volume_up : Icons.volume_off,
@@ -131,18 +183,30 @@ class CameraControls extends StatelessWidget {
         tooltip:
             isVoiceEnabled ? 'Desactivar narración' : 'Activar narración',
         isDisabled: areControlsLocked,
+        semanticsLabel: 'Narración por voz',
+        semanticsHint: isVoiceEnabled
+            ? 'Doble toque para desactivar la narración de la aplicación.'
+            : 'Doble toque para activar la narración de la aplicación.',
+        semanticsValue: isVoiceEnabled ? 'Activada' : 'Desactivada',
+        isToggle: true,
       ),
       ControlButton(
         content: Icons.settings_voice,
         onPressed: onVoiceSettings,
         tooltip: 'Configuración de voz',
         isDisabled: areControlsLocked,
+        semanticsLabel: 'Abrir configuración de voz',
+        semanticsHint:
+            'Doble toque para modificar la velocidad, tono e idioma de la narración.',
       ),
       ControlButton(
         content: Icons.flip_camera_ios,
         onPressed: onCameraFlipped,
         tooltip: 'Cambiar cámara',
         isDisabled: areControlsLocked,
+        semanticsLabel: 'Cambiar cámara',
+        semanticsHint:
+            'Doble toque para alternar entre la cámara frontal y trasera.',
       ),
     ];
 
