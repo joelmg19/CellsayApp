@@ -136,6 +136,7 @@ class VoiceAnnouncer {
       await _tts.setPitch(validSettings.pitch);
       await _tts.setVolume(validSettings.volume);
       await _tts.awaitSpeakCompletion(true);
+      await _tts.setAudioFocus(false);
     } catch (_) {
       // Ignore configuration errors to avoid crashing voice flow.
     }
@@ -192,6 +193,9 @@ class VoiceAnnouncer {
     } catch (_) {}
     try {
       await _tts.setVolume(_settings.volume);
+    } catch (_) {}
+    try {
+      await _tts.setAudioFocus(false);
     } catch (_) {}
   }
 

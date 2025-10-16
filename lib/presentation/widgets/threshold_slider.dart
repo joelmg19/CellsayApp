@@ -47,13 +47,47 @@ class ThresholdSlider extends StatelessWidget {
             thumbColor: Colors.yellow,
             overlayColor: Colors.yellow.withValues(alpha: 0.2),
           ),
-          child: Slider(
-            value: _getSliderValue(),
-            min: _getSliderMin(),
-            max: _getSliderMax(),
-            divisions: _getSliderDivisions(),
-            label: _getSliderLabel(),
-            onChanged: areControlsLocked ? null : onValueChanged,
+          child: MergeSemantics(
+            child: Builder(
+              builder: (context) {
+                final value = _getSliderValue();
+                final min = _getSliderMin();
+                final max = _getSliderMax();
+                final divisions = _getSliderDivisions();
+                final step = divisions == 0 ? 0.1 : (max - min) / divisions;
+                final semanticsValue = _formatSemanticsValue(value);
+                return Semantics(
+                  container: true,
+                  label: _getSemanticsLabel(),
+                  value: semanticsValue,
+                  hint: _getSemanticsHint(),
+                  increasedValue: _formatSemanticsValue(
+                    (value + step).clamp(min, max),
+                  ),
+                  decreasedValue: _formatSemanticsValue(
+                    (value - step).clamp(min, max),
+                  ),
+                  onIncrease: areControlsLocked
+                      ? null
+                      : () => onValueChanged(
+                            (value + step).clamp(min, max),
+                          ),
+                  onDecrease: areControlsLocked
+                      ? null
+                      : () => onValueChanged(
+                            (value - step).clamp(min, max),
+                          ),
+                  child: Slider(
+                    value: value,
+                    min: min,
+                    max: max,
+                    divisions: divisions,
+                    label: _getSliderLabel(),
+                    onChanged: areControlsLocked ? null : onValueChanged,
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -76,4 +110,28 @@ class ThresholdSlider extends StatelessWidget {
     SliderType.iou => iouThreshold.toStringAsFixed(1),
     _ => '',
   };
+
+  String _formatSemanticsValue(double value) {
+    if (activeSlider == SliderType.numItems) {
+      return '${value.round()} objetos';
+    }
+    return '${value.toStringAsFixed(1)}';
+  }
+
+  String _getSemanticsLabel() => switch (activeSlider) {
+        SliderType.numItems => 'Control deslizante de límite de objetos',
+        SliderType.confidence => 'Control deslizante del umbral de confianza',
+        SliderType.iou => 'Control deslizante del umbral de intersección sobre unión',
+        _ => 'Control deslizante',
+      };
+
+  String _getSemanticsHint() => switch (activeSlider) {
+        SliderType.numItems =>
+            'Ajusta el número máximo de objetos que serán anunciados.',
+        SliderType.confidence =>
+            'Ajusta el nivel mínimo de confianza requerido para anunciar una detección.',
+        SliderType.iou =>
+            'Ajusta cuánto deben solaparse las detecciones para considerarse iguales.',
+        _ => 'Ajusta el valor del control deslizante.',
+      };
 }

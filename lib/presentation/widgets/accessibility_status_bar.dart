@@ -160,11 +160,19 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RichText(
-      text: TextSpan(
-        text: '$label: ',
-        style: style.copyWith(color: Colors.white70),
-        children: [TextSpan(text: value, style: style)],
+    final description = '$label: $value';
+    return MergeSemantics(
+      child: Semantics(
+        label: description,
+        child: ExcludeSemantics(
+          child: RichText(
+            text: TextSpan(
+              text: '$label: ',
+              style: style.copyWith(color: Colors.white70),
+              children: [TextSpan(text: value, style: style)],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -183,19 +191,27 @@ class _AlertChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-          fontSize: 14 * fontScale,
+    return MergeSemantics(
+      child: Semantics(
+        label: text,
+        container: true,
+        child: ExcludeSemantics(
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Text(
+              text,
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 14 * fontScale,
+              ),
+            ),
+          ),
         ),
       ),
     );
