@@ -39,7 +39,10 @@ class _VoiceSettingsSheetState extends State<VoiceSettingsSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Configuración de voz', style: textStyle),
+          Semantics(
+            header: true,
+            child: Text('Configuración de voz', style: textStyle),
+          ),
           const SizedBox(height: 16),
           _buildSlider(
             label: 'Velocidad',
@@ -67,26 +70,37 @@ class _VoiceSettingsSheetState extends State<VoiceSettingsSheet> {
           const SizedBox(height: 16),
           Text('Idioma', style: textStyle),
           const SizedBox(height: 8),
-          DropdownButton<String>(
-            value: _current.language,
-            isExpanded: true,
-            items: const [
-              DropdownMenuItem(value: 'es-ES', child: Text('Español (España)')),
-              DropdownMenuItem(value: 'es-MX', child: Text('Español (México)')),
-              DropdownMenuItem(value: 'en-US', child: Text('Inglés (Estados Unidos)')),
-            ],
-            onChanged: (value) {
-              if (value != null) {
-                _updateSettings(_current.copyWith(language: value));
-              }
-            },
+          Semantics(
+            container: true,
+            label: 'Idioma de la narración',
+            value: _languageDescription(_current.language),
+            hint: 'Doble toque para elegir un idioma distinto para la voz.',
+            child: DropdownButton<String>(
+              value: _current.language,
+              isExpanded: true,
+              items: const [
+                DropdownMenuItem(value: 'es-ES', child: Text('Español (España)')),
+                DropdownMenuItem(value: 'es-MX', child: Text('Español (México)')),
+                DropdownMenuItem(value: 'en-US', child: Text('Inglés (Estados Unidos)')),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  _updateSettings(_current.copyWith(language: value));
+                }
+              },
+            ),
           ),
           const SizedBox(height: 16),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: _resetDefaults,
-              child: const Text('Restablecer'),
+            child: Semantics(
+              button: true,
+              label: 'Restablecer configuración de voz',
+              hint: 'Doble toque para volver a los valores predeterminados.',
+              child: TextButton(
+                onPressed: _resetDefaults,
+                child: const Text('Restablecer'),
+              ),
             ),
           ),
         ],
@@ -101,17 +115,35 @@ class _VoiceSettingsSheetState extends State<VoiceSettingsSheet> {
     required double max,
     required ValueChanged<double> onChanged,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(fontSize: 14 * widget.fontScale)),
-        Slider(
-          value: value,
-          min: min,
-          max: max,
-          onChanged: onChanged,
+    final step = (max - min) / 10;
+    double clampValue(double target) => target.clamp(min, max).toDouble();
+    final semanticsValue = value.toStringAsFixed(2);
+
+    return MergeSemantics(
+      child: Semantics(
+        container: true,
+        label: label,
+        value: semanticsValue,
+        hint: 'Desliza el control para ajustar $label.',
+        increasedValue: clampValue(value + step).toStringAsFixed(2),
+        decreasedValue: clampValue(value - step).toStringAsFixed(2),
+        onIncrease: () => onChanged(clampValue(value + step)),
+        onDecrease: () => onChanged(clampValue(value - step)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ExcludeSemantics(
+              child: Text(label, style: TextStyle(fontSize: 14 * widget.fontScale)),
+            ),
+            Slider(
+              value: value,
+              min: min,
+              max: max,
+              onChanged: onChanged,
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -125,5 +157,14 @@ class _VoiceSettingsSheetState extends State<VoiceSettingsSheet> {
 
   void _resetDefaults() {
     _updateSettings(const VoiceSettings());
+  }
+
+  String _languageDescription(String code) {
+    return switch (code) {
+      'es-ES' => 'Español de España',
+      'es-MX' => 'Español de México',
+      'en-US' => 'Inglés de Estados Unidos',
+      _ => code,
+    };
   }
 }

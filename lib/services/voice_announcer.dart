@@ -136,6 +136,7 @@ class VoiceAnnouncer {
       await _tts.setPitch(validSettings.pitch);
       await _tts.setVolume(validSettings.volume);
       await _tts.awaitSpeakCompletion(true);
+      await _disableExclusiveAudioFocus();
     } catch (_) {
       // Ignore configuration errors to avoid crashing voice flow.
     }
@@ -193,6 +194,7 @@ class VoiceAnnouncer {
     try {
       await _tts.setVolume(_settings.volume);
     } catch (_) {}
+    await _disableExclusiveAudioFocus();
   }
 
   Future<void> repeatLastMessage() async {
@@ -367,6 +369,18 @@ class VoiceAnnouncer {
 
   void dispose() {
     unawaited(_safeStop());
+  }
+
+  Future<void> _disableExclusiveAudioFocus() async {
+    final dynamic tts = _tts;
+    try {
+      final result = tts.setAudioFocus(false);
+      if (result is Future) {
+        await result;
+      }
+    } catch (_) {
+      // Ignore failures or missing platform support.
+    }
   }
 
   String _localizeLabel(String label) {
