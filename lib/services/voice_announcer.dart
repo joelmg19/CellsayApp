@@ -211,8 +211,9 @@ class VoiceAnnouncer {
     String message, {
     bool bypassCooldown = false,
     bool storeAsLastMessage = true,
+    bool ignorePause = false,
   }) async {
-    if (message.trim().isEmpty || _isPaused) {
+    if (message.trim().isEmpty || (_isPaused && !ignorePause)) {
       return;
     }
 

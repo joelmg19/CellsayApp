@@ -929,17 +929,21 @@ class CameraInferenceController extends ChangeNotifier {
     _lastWeatherFetch = now;
     if (info != null) {
       _weatherInfo = info;
-      _voiceCommandStatus = 'Clima actualizado.';
-      notifyListeners();
+      final summary = info.formatSummary();
       if (force) {
-        final summary = info.formatSummary();
+        final message = 'El clima actual es $summary';
+        _voiceCommandStatus = message;
+        notifyListeners();
         unawaited(
           _announceSystemMessage(
-            'El clima actual es $summary',
+            message,
             force: force,
             bypassCooldown: force,
           ),
         );
+      } else {
+        _voiceCommandStatus = 'Clima actualizado.';
+        notifyListeners();
       }
     } else if (force) {
       _voiceCommandStatus = 'No fue posible obtener el clima.';
@@ -983,6 +987,7 @@ class CameraInferenceController extends ChangeNotifier {
     await _voiceAnnouncer.speakMessage(
       message,
       bypassCooldown: bypassCooldown,
+      ignorePause: force,
     );
   }
 
