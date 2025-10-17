@@ -1,4 +1,3 @@
-// Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 import 'package:ultralytics_yolo/models/yolo_task.dart';
 
