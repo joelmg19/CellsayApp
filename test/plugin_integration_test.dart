@@ -1,4 +1,3 @@
-// Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 // This is a basic Flutter integration test.
 //
