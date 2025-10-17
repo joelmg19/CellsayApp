@@ -20,13 +20,13 @@ void main() {
   testWidgets('Basic YOLO initialization test', (WidgetTester tester) async {
     // Create YOLO instance with required parameters
     final YOLO yolo = YOLO(
-      modelPath: 'assets/models/yolo11n.tflite',
+      modelPath: 'assets/models/best_float16.tflite',
       task: YOLOTask.detect,
     );
 
     // Check that YOLO instance was created successfully
     expect(yolo, isNotNull);
-    expect(yolo.modelPath, 'assets/models/yolo11n.tflite');
+    expect(yolo.modelPath, 'assets/models/best_float16.tflite');
     expect(yolo.task, YOLOTask.detect);
   });
 
