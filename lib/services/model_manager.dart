@@ -117,11 +117,18 @@ class ModelManager {
     final modelFile = File('${dir.path}/$bundledName');
     if (await modelFile.exists()) return modelFile.path;
 
-    // Download if not found
+    // Try extracting from bundled Flutter assets for custom/local models.
+    final assetBytes = await _loadBundledModel(bundledName);
+    if (assetBytes != null && assetBytes.isNotEmpty) {
+      await modelFile.writeAsBytes(assetBytes, flush: true);
+      return modelFile.path;
+    }
+
+    // Download if not found locally or in assets
     _updateStatus('Downloading ${modelType.modelName} model...');
     final bytes = await _downloadFile('$_modelDownloadBaseUrl/$bundledName');
     if (bytes != null && bytes.isNotEmpty) {
-      await modelFile.writeAsBytes(bytes);
+      await modelFile.writeAsBytes(bytes, flush: true);
       return modelFile.path;
     }
     return null;
@@ -194,6 +201,15 @@ class ModelManager {
       if (await targetDir.exists()) {
         await targetDir.delete(recursive: true);
       }
+      return null;
+    }
+  }
+
+  Future<List<int>?> _loadBundledModel(String bundledName) async {
+    try {
+      final data = await rootBundle.load('assets/models/$bundledName');
+      return data.buffer.asUint8List();
+    } catch (_) {
       return null;
     }
   }
