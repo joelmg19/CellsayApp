@@ -1,10 +1,9 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 import 'package:flutter/material.dart';
-import 'package:ultralytics_yolo_example/models/camera_launch_args.dart';
-import 'package:ultralytics_yolo_example/models/models.dart';
-import 'package:ultralytics_yolo_example/presentation/screens/menu_screen.dart';
 import 'package:ultralytics_yolo_example/presentation/screens/camera_inference_screen.dart';
+import 'package:ultralytics_yolo_example/presentation/screens/menu_screen.dart';
+import 'package:ultralytics_yolo_example/presentation/screens/money_detector_screen.dart';
 import 'package:ultralytics_yolo_example/presentation/screens/single_image_screen.dart';
 
 void main() {
@@ -20,9 +19,15 @@ class MyApp extends StatelessWidget {
       home: const MenuScreen(),
       onGenerateRoute: (settings) {
         if (settings.name == '/camera') {
-          final initialModel = _resolveInitialModel(settings.arguments);
+          final target = _resolveCameraTarget(settings.arguments);
+          if (target == _CameraTarget.money) {
+            return MaterialPageRoute(
+              builder: (_) => const MoneyDetectorScreen(),
+              settings: settings,
+            );
+          }
           return MaterialPageRoute(
-            builder: (_) => CameraInferenceScreen(initialModel: initialModel),
+            builder: (_) => const CameraInferenceScreen(),
             settings: settings,
           );
         }
@@ -38,23 +43,21 @@ class MyApp extends StatelessWidget {
   }
 }
 
-ModelType _resolveInitialModel(Object? arguments) {
-  if (arguments is CameraLaunchArgs) {
-    return arguments.initialModel ?? ModelType.Interior;
-  }
-  if (arguments is ModelType) {
-    return arguments;
-  }
+enum _CameraTarget { objects, money }
+
+_CameraTarget _resolveCameraTarget(Object? arguments) {
   if (arguments is Map) {
-    final modelValue = arguments['model'] ?? arguments['preset'];
-    if (modelValue is String) {
-      return modelTypeFromString(modelValue, fallback: ModelType.Interior);
-    } else if (modelValue is ModelType) {
-      return modelValue;
+    final preset = arguments['preset'] ?? arguments['model'];
+    if (preset is String && _isMoneyPreset(preset)) {
+      return _CameraTarget.money;
     }
+  } else if (arguments is String && _isMoneyPreset(arguments)) {
+    return _CameraTarget.money;
   }
-  if (arguments is String) {
-    return modelTypeFromString(arguments, fallback: ModelType.Interior);
-  }
-  return ModelType.Interior;
+  return _CameraTarget.objects;
+}
+
+bool _isMoneyPreset(String value) {
+  final normalized = value.toLowerCase();
+  return normalized == 'money' || normalized == 'dinero';
 }
