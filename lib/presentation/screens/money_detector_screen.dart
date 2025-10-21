@@ -97,7 +97,7 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
 
   Future<void> _loadModel() async {
     try {
-      _interpreter = await Interpreter.fromAsset('models/dinerocl.tflite');
+      _interpreter = await Interpreter.fromAsset('assets/models/dinerocl.tflite');
       setState(() => _isModelLoaded = true);
       debugPrint('✅ Modelo cargado correctamente');
     } catch (error) {
