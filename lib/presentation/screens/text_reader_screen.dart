@@ -179,11 +179,15 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
     final format = InputImageFormatValue.fromRawValue(image.format.raw) ??
         InputImageFormat.yuv420;
 
+    final bytesPerRow = image.planes.isNotEmpty
+        ? image.planes.first.bytesPerRow
+        : (image.height > 0 ? bytes.length ~/ image.height : bytes.length);
+
     final inputImageData = InputImageMetadata(
       size: imageSize,
       rotation: imageRotation,
       format: format,
-      bytesPerRow: image.planes.isNotEmpty ? image.planes.first.bytesPerRow : null,
+      bytesPerRow: bytesPerRow,
     );
 
     return InputImage.fromBytes(bytes: bytes, metadata: inputImageData);
