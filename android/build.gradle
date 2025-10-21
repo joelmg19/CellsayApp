@@ -14,11 +14,19 @@ subprojects {
 }
 
 subprojects { subproject ->
-    afterEvaluate {
+    subproject.plugins.withId("com.android.library") {
         def androidExtension = subproject.extensions.findByName("android")
         if (subproject.name == "tflite_flutter" && androidExtension != null && androidExtension.hasProperty("namespace")) {
             androidExtension.namespace = "sq.flutter.tflite_flutter"
         }
+    }
+}
+
+subprojects {
+    configurations.all { configuration ->
+        configuration.exclude group: "org.tensorflow", module: "tensorflow-lite"
+        configuration.exclude group: "org.tensorflow", module: "tensorflow-lite-api"
+        configuration.exclude group: "org.tensorflow", module: "tensorflow-lite-gpu"
     }
 }
 
