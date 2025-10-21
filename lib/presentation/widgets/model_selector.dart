@@ -43,7 +43,7 @@ class ModelSelector extends StatelessWidget {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                model.name.toUpperCase(),
+                model.displayName.toUpperCase(),
                 style: TextStyle(
                   color: isSelected ? Colors.black : Colors.white,
                   fontSize: 12 * textScaleFactor,
