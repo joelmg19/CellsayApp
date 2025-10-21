@@ -55,7 +55,7 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
     if (!_hasWelcomed) {
       _hasWelcomed = true;
       await _speak(
-        "Bienvenido. Di 'Analízalo' cuando quieras identificar el billete.",
+        "Bienvenido a la sección de billetes chilenos. Di 'Analízalo' cuando quieras identificar el billete.",
       );
       _tts.setCompletionHandler(() {
         if (!_isLoopRunning) {
@@ -186,7 +186,7 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
   Future<void> _speak(String text) async {
     try {
       await _tts.stop();
-      await _tts.setLanguage('es-ES');
+      await _tts.setLanguage('es-CL');
       await _tts.setSpeechRate(0.9);
       await _tts.speak(text);
     } catch (_) {}
