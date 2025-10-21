@@ -18,6 +18,12 @@ class MyApp extends StatelessWidget {
       title: 'CellSay',
       home: const MenuScreen(),
       onGenerateRoute: (settings) {
+        if (settings.name == '/money') {
+          return MaterialPageRoute(
+            builder: (_) => const MoneyDetectorScreen(),
+            settings: settings,
+          );
+        }
         if (settings.name == '/camera') {
           final target = _resolveCameraTarget(settings.arguments);
           if (target == _CameraTarget.money) {
