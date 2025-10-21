@@ -232,7 +232,7 @@ class MoneyDetectionService {
     'uyu',
     'dolar',
     'dolares',
-    'mx$',
+    'mx\$',
     'bs',
     'sol',
     'soles',
