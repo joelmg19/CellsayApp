@@ -27,6 +27,8 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
   bool _hasWelcomed = false;
   bool _isListening = false;
   bool _isLoopRunning = false;
+  bool _shouldResumeLoop = false;
+  bool _isLoopPausedForProcessing = false;
   String _lastResult = '';
 
   final List<String> _labels = ['1000', '2000', '5000', '10000', '20000'];
@@ -54,14 +56,16 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
 
     if (!_hasWelcomed) {
       _hasWelcomed = true;
-      await _speak(
-        "Bienvenido a la sección de billetes chilenos. Di 'Analízalo' cuando quieras identificar el billete.",
-      );
       _tts.setCompletionHandler(() {
-        if (!_isLoopRunning) {
+        if ((_shouldResumeLoop && !_isLoopPausedForProcessing) ||
+            (!_isLoopRunning && !_isLoopPausedForProcessing)) {
+          _shouldResumeLoop = false;
           _startListeningLoop();
         }
       });
+      await _speak(
+        "Bienvenido a la sección de billetes chilenos. Di 'Analízalo' cuando quieras identificar el billete.",
+      );
     } else {
       _startListeningLoop();
     }
@@ -107,13 +111,17 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
   }
 
   Future<void> _startListeningLoop() async {
-    if (_isLoopRunning || !mounted) return;
+    if ((_isLoopRunning && !_isLoopPausedForProcessing) || !mounted) return;
     _isLoopRunning = true;
-    while (mounted) {
-      await _listenForCommand();
-      await Future.delayed(const Duration(milliseconds: 500));
+    try {
+      while (mounted && _isLoopRunning) {
+        await _listenForCommand();
+        if (!mounted || !_isLoopRunning) break;
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+    } finally {
+      _isLoopRunning = false;
     }
-    _isLoopRunning = false;
   }
 
   Future<void> _listenForCommand() async {
@@ -126,11 +134,13 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
         debugPrint('🎤 Estado: $status');
         if (status == 'done' || status == 'notListening') {
           _isListening = false;
+          _shouldResumeLoop = true;
         }
       },
       onError: (error) {
         debugPrint('❌ Error STT: $error');
         _isListening = false;
+        _shouldResumeLoop = true;
       },
     );
 
@@ -142,7 +152,7 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
     _isListening = true;
     debugPrint('🎧 Escuchando...');
 
-    await _speech.listen(
+    final started = await _speech.listen(
       localeId: 'es_CL',
       partialResults: false,
       listenFor: const Duration(seconds: 15),
@@ -154,13 +164,34 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
         debugPrint('🗣 Comando detectado: $command');
 
         if (_shouldAnalyze(command) && !_isAnalyzing) {
-          await _speech.stop();
+          await _stopListeningSession(pauseLoop: true);
           await _speak('Analizando billete...');
           await Future.delayed(const Duration(seconds: 1));
           await _analyzeOnce();
         }
       },
     );
+
+    if (started is bool && !started) {
+      _isListening = false;
+      _shouldResumeLoop = true;
+    }
+  }
+
+  Future<void> _stopListeningSession({bool pauseLoop = false}) async {
+    if (pauseLoop) {
+      _isLoopRunning = false;
+      _isLoopPausedForProcessing = true;
+    }
+
+    if (_isListening) {
+      try {
+        await _speech.stop();
+      } catch (error) {
+        debugPrint('❌ Error deteniendo escucha: $error');
+      }
+    }
+    _isListening = false;
   }
 
   bool _shouldAnalyze(String command) {
@@ -194,6 +225,8 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
 
   Future<void> _analyzeOnce() async {
     if (!_isModelLoaded || !_isCameraReady || _controller == null || _interpreter == null) {
+      _shouldResumeLoop = true;
+      _isLoopPausedForProcessing = false;
       return;
     }
 
@@ -251,9 +284,13 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
       await _speak(
         'Este billete es de $label pesos. Puedes decir \'Analízalo\' para otro billete.',
       );
+      _shouldResumeLoop = true;
+      _isLoopPausedForProcessing = false;
     } catch (error) {
       debugPrint('❌ Error analizando billete: $error');
       await _speak('Ocurrió un error al analizar el billete.');
+      _shouldResumeLoop = true;
+      _isLoopPausedForProcessing = false;
     } finally {
       if (mounted) {
         setState(() => _isAnalyzing = false);
