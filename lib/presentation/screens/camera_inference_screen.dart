@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import '../../models/models.dart';
 import '../controllers/camera_inference_controller.dart';
 import '../widgets/accessibility_status_bar.dart';
 import '../widgets/camera_inference_content.dart';
@@ -17,7 +18,9 @@ import '../widgets/voice_settings_sheet.dart';
 /// - Camera controls (flip, zoom)
 /// - Performance metrics (FPS)
 class CameraInferenceScreen extends StatefulWidget {
-  const CameraInferenceScreen({super.key});
+  const CameraInferenceScreen({super.key, this.initialModel = ModelType.Interior});
+
+  final ModelType initialModel;
 
   @override
   State<CameraInferenceScreen> createState() => _CameraInferenceScreenState();
@@ -29,7 +32,7 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
   @override
   void initState() {
     super.initState();
-    _controller = CameraInferenceController();
+    _controller = CameraInferenceController(initialModel: widget.initialModel);
     _controller.initialize().catchError((error) {
       if (mounted) {
         _showError('Model Loading Error', error.toString());
