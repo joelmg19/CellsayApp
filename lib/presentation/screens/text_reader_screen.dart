@@ -27,6 +27,11 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
   String _lastBlock = '';
   bool _initializing = true;
   String? _errorMessage;
+  static const Rect _normalizedScanArea = Rect.fromCenter(
+    center: Offset(0.5, 0.45),
+    width: 0.8,
+    height: 0.45,
+  );
 
   @override
   void initState() {
@@ -52,11 +57,17 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
       );
       final controller = CameraController(
         camera,
-        ResolutionPreset.medium,
+        ResolutionPreset.veryHigh,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.yuv420,
       );
       await controller.initialize();
+      try {
+        await controller.setFocusMode(FocusMode.auto);
+        await controller.setExposureMode(ExposureMode.auto);
+      } catch (_) {
+        // Algunas cámaras no soportan establecer estos modos de forma explícita.
+      }
       await controller.startImageStream(_processCameraImage);
 
       if (!mounted) {
@@ -89,9 +100,15 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
     CameraController controller,
   ) async {
     try {
+      final rotation = _rotationForController(controller);
+      final Size effectiveSize = _imageSizeConsideringRotation(
+        Size(image.width.toDouble(), image.height.toDouble()),
+        rotation,
+      );
+      final region = _scanRegionInImage(effectiveSize);
       final inputImage = _inputImageFromCameraImage(image, controller);
       final recognised = await _recognizer.processImage(inputImage);
-      final text = recognised.text.trim();
+      final text = _textWithinRegion(recognised, region).trim();
 
       if (text.isEmpty) {
         _clearIfTextLost();
@@ -182,6 +199,74 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
     );
 
     return InputImage.fromBytes(bytes: imageData.bytes, metadata: inputImageData);
+  }
+
+  InputImageRotation _rotationForController(CameraController controller) {
+    final rotation = InputImageRotationValue.fromRawValue(
+          controller.description.sensorOrientation,
+        ) ??
+        InputImageRotation.rotation0deg;
+    return rotation;
+  }
+
+  Size _imageSizeConsideringRotation(Size size, InputImageRotation rotation) {
+    switch (rotation) {
+      case InputImageRotation.rotation90deg:
+      case InputImageRotation.rotation270deg:
+        return Size(size.height, size.width);
+      default:
+        return size;
+    }
+  }
+
+  Rect _scanRegionInImage(Size imageSize) {
+    final double left = (_normalizedScanArea.left).clamp(0.0, 1.0);
+    final double top = (_normalizedScanArea.top).clamp(0.0, 1.0);
+    final double width = _normalizedScanArea.width.clamp(0.0, 1.0 - left);
+    final double height = _normalizedScanArea.height.clamp(0.0, 1.0 - top);
+
+    return Rect.fromLTWH(
+      left * imageSize.width,
+      top * imageSize.height,
+      width * imageSize.width,
+      height * imageSize.height,
+    );
+  }
+
+  String _textWithinRegion(RecognisedText recognised, Rect region) {
+    if (recognised.blocks.isEmpty) {
+      return recognised.text;
+    }
+
+    final StringBuffer buffer = StringBuffer();
+
+    for (final block in recognised.blocks) {
+      final Rect? blockRect = block.boundingBox;
+      if (blockRect == null || !blockRect.overlaps(region)) {
+        continue;
+      }
+
+      for (final line in block.lines) {
+        final Rect? lineRect = line.boundingBox;
+        if (lineRect == null || !lineRect.overlaps(region)) {
+          continue;
+        }
+
+        final String lineText = line.text.trim();
+        if (lineText.isEmpty) {
+          continue;
+        }
+
+        buffer.writeln(lineText);
+      }
+    }
+
+    final String result = buffer.toString().trim();
+    if (result.isNotEmpty) {
+      return result;
+    }
+
+    return recognised.text;
   }
 
   _ImageData _buildImageBytes(CameraImage image) {
@@ -277,6 +362,59 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
                       fit: StackFit.expand,
                       children: [
                         CameraPreview(controller),
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final rect = _normalizedScanArea;
+                                final double left = constraints.maxWidth * rect.left;
+                                final double top = constraints.maxHeight * rect.top;
+                                final double width = constraints.maxWidth * rect.width;
+                                final double height = constraints.maxHeight * rect.height;
+
+                                final bool placeLabelAbove = top >= 56;
+                                final double labelTop = placeLabelAbove
+                                    ? top - 40
+                                    : ((top + height + 12).clamp(0.0, constraints.maxHeight - 28)).toDouble();
+
+                                return Stack(
+                                  children: [
+                                    Positioned(
+                                      left: left,
+                                      top: top,
+                                      width: width,
+                                      height: height,
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 3,
+                                          ),
+                                          color: Colors.black.withValues(alpha: 0.15),
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      left: left,
+                                      top: labelTop,
+                                      width: width,
+                                      child: const Text(
+                                        'Enfoca el texto dentro del recuadro',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        ),
                         Align(
                           alignment: Alignment.bottomCenter,
                           child: Container(
