@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -160,11 +161,7 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
     CameraImage image,
     CameraController controller,
   ) {
-    final WriteBuffer allBytes = WriteBuffer();
-    for (final plane in image.planes) {
-      allBytes.putUint8List(plane.bytes);
-    }
-    final bytes = allBytes.done().buffer.asUint8List();
+    final _ImageData imageData = _buildImageBytes(image);
 
     final Size imageSize = Size(
       image.width.toDouble(),
@@ -175,27 +172,74 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
     final imageRotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation) ??
         InputImageRotation.rotation0deg;
 
-    final format = InputImageFormatValue.fromRawValue(image.format.raw) ??
-        InputImageFormat.yuv420;
+    final format = imageData.format;
 
-    final planeData = image.planes
-        .map(
-          (plane) => InputImagePlaneMetadata(
-            bytesPerRow: plane.bytesPerRow,
-            height: plane.height,
-            width: plane.width,
-          ),
-        )
-        .toList(growable: false);
-
-    final inputImageData = InputImageData(
+    final inputImageData = InputImageMetadata(
       size: imageSize,
-      imageRotation: imageRotation,
-      inputImageFormat: format,
-      planeData: planeData,
+      rotation: imageRotation,
+      format: format,
+      bytesPerRow: imageData.bytesPerRow,
     );
 
-    return InputImage.fromBytes(bytes: bytes, inputImageData: inputImageData);
+    return InputImage.fromBytes(bytes: imageData.bytes, metadata: inputImageData);
+  }
+
+  _ImageData _buildImageBytes(CameraImage image) {
+    if (image.format.group == ImageFormatGroup.bgra8888 && image.planes.isNotEmpty) {
+      final Plane plane = image.planes.first;
+      return _ImageData(
+        bytes: plane.bytes,
+        bytesPerRow: plane.bytesPerRow,
+        format: InputImageFormat.bgra8888,
+      );
+    }
+
+    if (image.planes.length >= 3) {
+      final Uint8List bytes = _convertToNv21(image);
+      return _ImageData(
+        bytes: bytes,
+        bytesPerRow: image.width,
+        format: InputImageFormat.nv21,
+      );
+    }
+
+    final Plane plane = image.planes.first;
+    return _ImageData(
+      bytes: plane.bytes,
+      bytesPerRow: plane.bytesPerRow,
+      format: InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.yuv420,
+    );
+  }
+
+  Uint8List _convertToNv21(CameraImage image) {
+    final int width = image.width;
+    final int height = image.height;
+
+    final Plane yPlane = image.planes[0];
+    final Plane uPlane = image.planes[1];
+    final Plane vPlane = image.planes[2];
+
+    final int uvRowStride = uPlane.bytesPerRow;
+    final int uvPixelStride = uPlane.bytesPerPixel ?? 1;
+    final int vRowStride = vPlane.bytesPerRow;
+    final int vPixelStride = vPlane.bytesPerPixel ?? 1;
+
+    final Uint8List nv21Bytes = Uint8List(width * height + (width * height ~/ 2));
+    nv21Bytes.setRange(0, width * height, yPlane.bytes);
+
+    int uvIndex = width * height;
+    for (int row = 0; row < height ~/ 2; row++) {
+      final int uRowOffset = row * uvRowStride;
+      final int vRowOffset = row * vRowStride;
+      for (int col = 0; col < width ~/ 2; col++) {
+        final int uIndex = uRowOffset + col * uvPixelStride;
+        final int vIndex = vRowOffset + col * vPixelStride;
+        nv21Bytes[uvIndex++] = vPlane.bytes[vIndex];
+        nv21Bytes[uvIndex++] = uPlane.bytes[uIndex];
+      }
+    }
+
+    return nv21Bytes;
   }
 
   @override
@@ -261,5 +305,17 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
                     ),
     );
   }
+}
+
+class _ImageData {
+  const _ImageData({
+    required this.bytes,
+    required this.bytesPerRow,
+    required this.format,
+  });
+
+  final Uint8List bytes;
+  final int bytesPerRow;
+  final InputImageFormat format;
 }
 
