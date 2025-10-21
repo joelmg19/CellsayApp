@@ -15,7 +15,6 @@ import '../../models/models.dart';
 import '../../models/voice_settings.dart';
 import '../../services/detection_post_processor.dart';
 import '../../services/model_manager.dart';
-import '../../services/money_detection_service.dart';
 import '../../services/voice_announcer.dart';
 import '../../services/voice_command_service.dart';
 import '../../services/weather_service.dart';
@@ -61,7 +60,6 @@ class CameraInferenceController extends ChangeNotifier {
   final _yoloController = YOLOViewController();
   late final ModelManager _modelManager;
   final DetectionPostProcessor _postProcessor = DetectionPostProcessor();
-  final MoneyDetectionService _moneyDetectionService = MoneyDetectionService();
   final VoiceAnnouncer _voiceAnnouncer = VoiceAnnouncer();
   final VoiceCommandService _voiceCommandService = VoiceCommandService();
   final WeatherService _weatherService = WeatherService();
@@ -69,7 +67,6 @@ class CameraInferenceController extends ChangeNotifier {
       DistanceEstimatorProvider();
   DistanceEstimator? _distanceEstimator;
   bool _loggedMissingDistanceEstimator = false;
-  String? _lastMoneyAnnouncement;
 
   // Performance optimization
   bool _isDisposed = false;
@@ -139,14 +136,20 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   static double _defaultConfidence(ModelType model) {
-    return model == ModelType.Money ? 0.4 : 0.5;
+    switch (model) {
+      case ModelType.Interior:
+      case ModelType.Exterior:
+        return 0.5;
+    }
   }
 
   static int _defaultNumItems(ModelType model) {
-    return model == ModelType.Money ? 15 : 30;
+    switch (model) {
+      case ModelType.Interior:
+      case ModelType.Exterior:
+        return 30;
+    }
   }
-
-  bool get _isMoneyModel => _selectedModel == ModelType.Money;
 
   /// Initialize the controller
   Future<void> initialize() async {
@@ -163,13 +166,7 @@ class CameraInferenceController extends ChangeNotifier {
   void onDetectionResults(List<YOLOResult> results) {
     if (_isDisposed) return;
 
-    if (_isMoneyModel) {
-      for (final result in results) {
-        result.distanceM = null;
-      }
-    } else {
-      _annotateDistances(results);
-    }
+    _annotateDistances(results);
     _frameCount++;
     final now = DateTime.now();
     final elapsed = now.difference(_lastFpsUpdate).inMilliseconds;
@@ -230,30 +227,6 @@ class CameraInferenceController extends ChangeNotifier {
       notifyListeners();
     }
 
-    if (_isMoneyModel) {
-      if (!_isVoiceEnabled || _isVoiceFeedbackPaused) {
-        _lastMoneyAnnouncement = null;
-        return;
-      }
-      final announcement =
-          _moneyDetectionService.buildAnnouncement(filtered.toList());
-      if (announcement != null) {
-        if (_lastMoneyAnnouncement != announcement) {
-          _lastMoneyAnnouncement = announcement;
-          unawaited(
-            _voiceAnnouncer.speakMessage(
-              announcement,
-              storeAsLastMessage: true,
-            ),
-          );
-        }
-      } else {
-        _lastMoneyAnnouncement = null;
-      }
-      return;
-    }
-
-    _lastMoneyAnnouncement = null;
     unawaited(
       _voiceAnnouncer.processDetections(
         filtered,
@@ -434,7 +407,6 @@ class CameraInferenceController extends ChangeNotifier {
     if (!_isVoiceEnabled) {
       unawaited(_voiceAnnouncer.stop());
     }
-    _lastMoneyAnnouncement = null;
     final status =
         _isVoiceEnabled ? 'Narración activada.' : 'Narración desactivada.';
     _voiceCommandStatus = status;
@@ -660,14 +632,9 @@ class CameraInferenceController extends ChangeNotifier {
     ])) {
       recognized = true;
       final count = _detectionCount;
-      final singular = _isMoneyModel ? 'billete' : 'objeto';
-      final plural = _isMoneyModel ? 'billetes' : 'objetos';
-      final objectLabel = count == 1 ? singular : plural;
-      final detectionMessage = count > 0
-          ? 'Detecto $count $objectLabel.'
-          : _isMoneyModel
-              ? 'No detecto billetes ahora.'
-              : 'No detecto objetos ahora.';
+      final objectLabel = count == 1 ? 'objeto' : 'objetos';
+      final detectionMessage =
+          count > 0 ? 'Detecto $count $objectLabel.' : 'No detecto objetos ahora.';
       feedback = detectionMessage;
     } else if (_commandContainsAny(normalized, [
       'hora',
@@ -854,7 +821,6 @@ class CameraInferenceController extends ChangeNotifier {
       _selectedModel = model;
       _confidenceThreshold = _defaultConfidence(model);
       _numItemsThreshold = _defaultNumItems(model);
-      _lastMoneyAnnouncement = null;
       _yoloController.setThresholds(
         confidenceThreshold: _confidenceThreshold,
         iouThreshold: _iouThreshold,
