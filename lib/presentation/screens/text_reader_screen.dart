@@ -161,11 +161,7 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
     CameraImage image,
     CameraController controller,
   ) {
-    final bytesBuilder = BytesBuilder();
-    for (final plane in image.planes) {
-      bytesBuilder.add(plane.bytes);
-    }
-    final bytes = bytesBuilder.toBytes();
+    final _ImageData imageData = _buildImageBytes(image);
 
     final Size imageSize = Size(
       image.width.toDouble(),
@@ -176,21 +172,74 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
     final imageRotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation) ??
         InputImageRotation.rotation0deg;
 
-    final format = InputImageFormatValue.fromRawValue(image.format.raw) ??
-        InputImageFormat.yuv420;
-
-    final bytesPerRow = image.planes.isNotEmpty
-        ? image.planes.first.bytesPerRow
-        : (image.height > 0 ? bytes.length ~/ image.height : bytes.length);
+    final format = imageData.format;
 
     final inputImageData = InputImageMetadata(
       size: imageSize,
       rotation: imageRotation,
       format: format,
-      bytesPerRow: bytesPerRow,
+      bytesPerRow: imageData.bytesPerRow,
     );
 
-    return InputImage.fromBytes(bytes: bytes, metadata: inputImageData);
+    return InputImage.fromBytes(bytes: imageData.bytes, metadata: inputImageData);
+  }
+
+  _ImageData _buildImageBytes(CameraImage image) {
+    if (image.format.group == ImageFormatGroup.bgra8888 && image.planes.isNotEmpty) {
+      final Plane plane = image.planes.first;
+      return _ImageData(
+        bytes: plane.bytes,
+        bytesPerRow: plane.bytesPerRow,
+        format: InputImageFormat.bgra8888,
+      );
+    }
+
+    if (image.planes.length >= 3) {
+      final Uint8List bytes = _convertToNv21(image);
+      return _ImageData(
+        bytes: bytes,
+        bytesPerRow: image.width,
+        format: InputImageFormat.nv21,
+      );
+    }
+
+    final Plane plane = image.planes.first;
+    return _ImageData(
+      bytes: plane.bytes,
+      bytesPerRow: plane.bytesPerRow,
+      format: InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.yuv420,
+    );
+  }
+
+  Uint8List _convertToNv21(CameraImage image) {
+    final int width = image.width;
+    final int height = image.height;
+
+    final Plane yPlane = image.planes[0];
+    final Plane uPlane = image.planes[1];
+    final Plane vPlane = image.planes[2];
+
+    final int uvRowStride = uPlane.bytesPerRow;
+    final int uvPixelStride = uPlane.bytesPerPixel ?? 1;
+    final int vRowStride = vPlane.bytesPerRow;
+    final int vPixelStride = vPlane.bytesPerPixel ?? 1;
+
+    final Uint8List nv21Bytes = Uint8List(width * height + (width * height ~/ 2));
+    nv21Bytes.setRange(0, width * height, yPlane.bytes);
+
+    int uvIndex = width * height;
+    for (int row = 0; row < height ~/ 2; row++) {
+      final int uRowOffset = row * uvRowStride;
+      final int vRowOffset = row * vRowStride;
+      for (int col = 0; col < width ~/ 2; col++) {
+        final int uIndex = uRowOffset + col * uvPixelStride;
+        final int vIndex = vRowOffset + col * vPixelStride;
+        nv21Bytes[uvIndex++] = vPlane.bytes[vIndex];
+        nv21Bytes[uvIndex++] = uPlane.bytes[uIndex];
+      }
+    }
+
+    return nv21Bytes;
   }
 
   @override
@@ -256,5 +305,17 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
                     ),
     );
   }
+}
+
+class _ImageData {
+  const _ImageData({
+    required this.bytes,
+    required this.bytesPerRow,
+    required this.format,
+  });
+
+  final Uint8List bytes;
+  final int bytesPerRow;
+  final InputImageFormat format;
 }
 
