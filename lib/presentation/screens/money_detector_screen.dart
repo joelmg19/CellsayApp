@@ -207,26 +207,41 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
       }
 
       final resized = img.copyResize(image, width: 224, height: 224);
-      final input = Float32List(1 * 224 * 224 * 3);
-      var pixelIndex = 0;
-      for (var y = 0; y < 224; y++) {
-        for (var x = 0; x < 224; x++) {
-          final pixel = resized.getPixel(x, y);
-          input[pixelIndex++] = (pixel.r / 127.5) - 1.0;
-          input[pixelIndex++] = (pixel.g / 127.5) - 1.0;
-          input[pixelIndex++] = (pixel.b / 127.5) - 1.0;
-        }
-      }
+      final input = List.generate(
+        1,
+        (_) => List.generate(
+          224,
+          (y) => List.generate(
+            224,
+            (x) {
+              final pixel = resized.getPixel(x, y);
+              return [
+                (pixel.r / 127.5) - 1.0,
+                (pixel.g / 127.5) - 1.0,
+                (pixel.b / 127.5) - 1.0,
+              ];
+            },
+            growable: false,
+          ),
+          growable: false,
+        ),
+        growable: false,
+      );
 
-      final output = Float32List(_labels.length);
-      _interpreter!.run(input.buffer.asFloat32List(), output.buffer.asFloat32List());
-      debugPrint('📊 Output: $output');
+      final output = List.generate(
+        1,
+        (_) => List<double>.filled(_labels.length, 0, growable: false),
+        growable: false,
+      );
+      _interpreter!.run(input, output);
+      final probabilities = output.first;
+      debugPrint('📊 Output: $probabilities');
 
       var resultIndex = 0;
       var maxVal = -double.infinity;
-      for (var i = 0; i < output.length; i++) {
-        if (output[i] > maxVal) {
-          maxVal = output[i];
+      for (var i = 0; i < probabilities.length; i++) {
+        if (probabilities[i] > maxVal) {
+          maxVal = probabilities[i];
           resultIndex = i;
         }
       }
