@@ -28,7 +28,7 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
   bool _initializing = true;
   String? _errorMessage;
   static const Rect _normalizedScanArea = Rect.fromCenter(
-    center: Offset(0.5, 0.45),
+    center: const Offset(0.5, 0.45),
     width: 0.8,
     height: 0.45,
   );
@@ -233,7 +233,7 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
     );
   }
 
-  String _textWithinRegion(RecognisedText recognised, Rect region) {
+  String _textWithinRegion(RecognizedText recognised, Rect region) {
     if (recognised.blocks.isEmpty) {
       return recognised.text;
     }
