@@ -13,6 +13,15 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+subprojects { subproject ->
+    afterEvaluate {
+        def androidExtension = subproject.extensions.findByName("android")
+        if (subproject.name == "tflite_flutter" && androidExtension != null && androidExtension.hasProperty("namespace")) {
+            androidExtension.namespace = "sq.flutter.tflite_flutter"
+        }
+    }
+}
+
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
