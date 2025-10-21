@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -160,11 +161,11 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
     CameraImage image,
     CameraController controller,
   ) {
-    final WriteBuffer allBytes = WriteBuffer();
+    final bytesBuilder = BytesBuilder();
     for (final plane in image.planes) {
-      allBytes.putUint8List(plane.bytes);
+      bytesBuilder.add(plane.bytes);
     }
-    final bytes = allBytes.done().buffer.asUint8List();
+    final bytes = bytesBuilder.toBytes();
 
     final Size imageSize = Size(
       image.width.toDouble(),
@@ -178,24 +179,18 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
     final format = InputImageFormatValue.fromRawValue(image.format.raw) ??
         InputImageFormat.yuv420;
 
-    final planeData = image.planes
-        .map(
-          (plane) => InputImagePlaneMetadata(
-            bytesPerRow: plane.bytesPerRow,
-            height: plane.height,
-            width: plane.width,
-          ),
-        )
-        .toList(growable: false);
+    final bytesPerRow = image.planes.isNotEmpty
+        ? image.planes.first.bytesPerRow
+        : (image.height > 0 ? bytes.length ~/ image.height : bytes.length);
 
-    final inputImageData = InputImageData(
+    final inputImageData = InputImageMetadata(
       size: imageSize,
-      imageRotation: imageRotation,
-      inputImageFormat: format,
-      planeData: planeData,
+      rotation: imageRotation,
+      format: format,
+      bytesPerRow: bytesPerRow,
     );
 
-    return InputImage.fromBytes(bytes: bytes, inputImageData: inputImageData);
+    return InputImage.fromBytes(bytes: bytes, metadata: inputImageData);
   }
 
   @override
