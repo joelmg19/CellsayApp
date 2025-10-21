@@ -42,7 +42,9 @@ class _MenuScreenState extends State<MenuScreen> {
   }
 
   Future<void> _readMenu() async {
-    await _speak('Menú principal. Opciones: Dinero, Objetos, Hora, Clima. Diga una opción.');
+    await _speak(
+      'Menú principal. Opciones: Dinero, Objetos, Hora, Clima. Diga una opción.',
+    );
   }
 
   Future<void> _startTalkback() async {
@@ -78,11 +80,7 @@ class _MenuScreenState extends State<MenuScreen> {
       await _stt.stop();
       setState(() => _isListening = false);
       if (!mounted) return;
-      Navigator.pushNamed(
-        context,
-        '/camera',
-        arguments: const CameraLaunchArgs(initialModel: ModelType.Money),
-      );
+      Navigator.pushNamed(context, '/money');
       return;
     }
     if (t.contains('objeto')) {
@@ -119,11 +117,7 @@ class _MenuScreenState extends State<MenuScreen> {
       _BigButton(
         label: 'Dinero',
         icon: Icons.attach_money_rounded,
-        onTap: () => Navigator.pushNamed(
-          context,
-          '/camera',
-          arguments: const CameraLaunchArgs(initialModel: ModelType.Money),
-        ),
+        onTap: () => Navigator.pushNamed(context, '/money'),
       ),
       _BigButton(
         label: 'Objetos',

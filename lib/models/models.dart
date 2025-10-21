@@ -3,8 +3,7 @@ import 'package:ultralytics_yolo/models/yolo_task.dart';
 
 enum ModelType {
   Interior('yolo11n', YOLOTask.detect, 'Interior'),
-  Exterior('best_float16', YOLOTask.detect, 'Exterior'),
-  Money('dinerocl', YOLOTask.detect, 'Dinero');
+  Exterior('best_float16', YOLOTask.detect, 'Exterior');
 
   const ModelType(this.modelName, this.task, this.displayName);
 
@@ -21,9 +20,6 @@ ModelType modelTypeFromString(String? value, {ModelType fallback = ModelType.Int
       return ModelType.Interior;
     case 'exterior':
       return ModelType.Exterior;
-    case 'money':
-    case 'dinero':
-      return ModelType.Money;
   }
   return fallback;
 }
