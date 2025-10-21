@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -160,11 +161,11 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
     CameraImage image,
     CameraController controller,
   ) {
-    final WriteBuffer allBytes = WriteBuffer();
+    final bytesBuilder = BytesBuilder();
     for (final plane in image.planes) {
-      allBytes.putUint8List(plane.bytes);
+      bytesBuilder.add(plane.bytes);
     }
-    final bytes = allBytes.done().buffer.asUint8List();
+    final bytes = bytesBuilder.toBytes();
 
     final Size imageSize = Size(
       image.width.toDouble(),
@@ -188,14 +189,14 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
         )
         .toList(growable: false);
 
-    final inputImageData = InputImageData(
+    final inputImageData = InputImageMetadata(
       size: imageSize,
-      imageRotation: imageRotation,
-      inputImageFormat: format,
+      rotation: imageRotation,
+      format: format,
       planeData: planeData,
     );
 
-    return InputImage.fromBytes(bytes: bytes, inputImageData: inputImageData);
+    return InputImage.fromBytes(bytes: bytes, metadata: inputImageData);
   }
 
   @override
