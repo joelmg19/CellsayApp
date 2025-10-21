@@ -65,6 +65,7 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
       });
       await _speak(
         "Bienvenido a la sección de billetes chilenos. Di 'Analízalo' cuando quieras identificar el billete.",
+        rate: 0.8,
       );
     } else {
       _startListeningLoop();
@@ -214,11 +215,11 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
     return normalized;
   }
 
-  Future<void> _speak(String text) async {
+  Future<void> _speak(String text, {double rate = 0.9}) async {
     try {
       await _tts.stop();
       await _tts.setLanguage('es-CL');
-      await _tts.setSpeechRate(0.9);
+      await _tts.setSpeechRate(rate);
       await _tts.speak(text);
     } catch (_) {}
   }
