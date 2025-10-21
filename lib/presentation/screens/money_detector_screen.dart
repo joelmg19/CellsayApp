@@ -30,6 +30,15 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
   String _lastResult = '';
 
   final List<String> _labels = ['1000', '2000', '5000', '10000', '20000'];
+  static const Set<String> _noiseTokens = {
+    'clp',
+    'peso',
+    'pesos',
+    'billete',
+    'moneda',
+    'mx\$',
+    'mxn',
+  };
 
   @override
   void initState() {
@@ -155,15 +164,23 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
   }
 
   bool _shouldAnalyze(String command) {
-    final normalized = command
+    final normalized = _normalizeCommand(command);
+    return normalized.contains('analizalo') ||
+        normalized.contains('analiza lo') ||
+        normalized.contains('analizar');
+  }
+
+  String _normalizeCommand(String command) {
+    var normalized = command
         .replaceAll('á', 'a')
         .replaceAll('é', 'e')
         .replaceAll('í', 'i')
         .replaceAll('ó', 'o')
         .replaceAll('ú', 'u');
-    return normalized.contains('analizalo') ||
-        normalized.contains('analiza lo') ||
-        normalized.contains('analizar');
+    for (final token in _noiseTokens) {
+      normalized = normalized.replaceAll(token, '').trim();
+    }
+    return normalized;
   }
 
   Future<void> _speak(String text) async {
