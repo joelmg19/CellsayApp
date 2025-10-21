@@ -27,7 +27,7 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
   String _lastBlock = '';
   bool _initializing = true;
   String? _errorMessage;
-  static const Rect _normalizedScanArea = Rect.fromCenter(
+  static final Rect _normalizedScanArea = Rect.fromCenter(
     center: const Offset(0.5, 0.45),
     width: 0.8,
     height: 0.45,
