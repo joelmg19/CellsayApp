@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:ultralytics_yolo_example/models/camera_launch_args.dart';
+import 'package:ultralytics_yolo_example/models/models.dart';
 import 'package:ultralytics_yolo_example/services/weather_service.dart';
 
 class MenuScreen extends StatefulWidget {
@@ -76,7 +78,11 @@ class _MenuScreenState extends State<MenuScreen> {
       await _stt.stop();
       setState(() => _isListening = false);
       if (!mounted) return;
-      Navigator.pushNamed(context, '/camera', arguments: {'preset': 'money'});
+      Navigator.pushNamed(
+        context,
+        '/camera',
+        arguments: const CameraLaunchArgs(initialModel: ModelType.Money),
+      );
       return;
     }
     if (t.contains('objeto')) {
@@ -113,7 +119,11 @@ class _MenuScreenState extends State<MenuScreen> {
       _BigButton(
         label: 'Dinero',
         icon: Icons.attach_money_rounded,
-        onTap: () => Navigator.pushNamed(context, '/camera', arguments: {'preset': 'money'}),
+        onTap: () => Navigator.pushNamed(
+          context,
+          '/camera',
+          arguments: const CameraLaunchArgs(initialModel: ModelType.Money),
+        ),
       ),
       _BigButton(
         label: 'Objetos',
