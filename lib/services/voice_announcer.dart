@@ -1,12 +1,9 @@
 
 import 'dart:async';
-import 'dart:ui';
-
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:ultralytics_yolo/models/yolo_result.dart';
 import '../core/tts/tts_helpers.dart';
 import '../core/vision/detection_distance_extension.dart';
-import '../core/vision/detection_geometry.dart';
 import '../models/detection_insight.dart';
 import '../models/voice_settings.dart';
 
@@ -314,17 +311,10 @@ class VoiceAnnouncer {
     for (final result in filteredResults.take(3)) {
       final rawLabel = result.className.isNotEmpty ? result.className : 'objeto';
       final label = _localizeLabel(rawLabel);
-      final rect = extractBoundingBox(result);
-      final side = _describeSide(rect);
-      final distanceClause = _ttsHelper.distanceClause(result.distanceM);
-
-      final directionText = side != null ? ' hacia $side' : '';
-      descriptions.add('$label $distanceClause$directionText');
+      descriptions.add(label);
 
       if (warning == null && _isClose(result.distanceM)) {
-        final warningSide = side != null ? 'a $side' : 'al frente';
-        final warningDistance = _ttsHelper.distanceClause(result.distanceM);
-        warning = 'Cuidado $warningSide, $label está $warningDistance.';
+        warning = 'Cuidado, $label está muy cerca.';
       }
     }
 
@@ -336,7 +326,7 @@ class VoiceAnnouncer {
     final movement = _describeMovementWarnings(insights) ?? '';
 
     final obstacle = insights.hasCloseObstacle
-        ? ' Obstáculo cercano detectado: ${_localizeLabels(insights.closeObstacleLabels).join(', ')}.'
+        ? ' Obstáculo cercano al frente: ${_localizeLabels(insights.closeObstacleLabels).join(', ')}.'
         : '';
 
     final traffic = _describeTrafficLight(insights.trafficLightSignal);
@@ -345,18 +335,6 @@ class VoiceAnnouncer {
         .where((element) => element != null && element.isNotEmpty)
         .join(' ')
         .trim();
-  }
-
-  String? _describeSide(Rect? rect) {
-    if (rect == null) return null;
-    final centerX = rect.center.dx;
-
-    if (centerX < 0.33) {
-      return 'la izquierda';
-    } else if (centerX > 0.66) {
-      return 'la derecha';
-    }
-    return 'el centro';
   }
 
   bool _isClose(double? meters) {
