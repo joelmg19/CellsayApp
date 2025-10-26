@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../controllers/camera_inference_controller.dart';
@@ -13,14 +12,15 @@ import '../widgets/voice_settings_sheet.dart';
 ///
 /// This screen provides:
 /// - Live camera feed with YOLO object detection
-/// - Model selection (Interior, Exterior)
+/// - Model selection (Interior, Exterior, Billetes32)
 /// - Adjustable thresholds (confidence, IoU, max detections)
 /// - Camera controls (flip, zoom)
 /// - Performance metrics (FPS)
 class CameraInferenceScreen extends StatefulWidget {
-  const CameraInferenceScreen({super.key, this.initialModel = ModelType.Interior});
+  // CORRECCIÓN CLAVE: Cambiar 'initialModel' por 'modelType'
+  const CameraInferenceScreen({super.key, this.modelType = ModelType.Interior});
 
-  final ModelType initialModel;
+  final ModelType modelType;
 
   @override
   State<CameraInferenceScreen> createState() => _CameraInferenceScreenState();
@@ -32,7 +32,8 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
   @override
   void initState() {
     super.initState();
-    _controller = CameraInferenceController(initialModel: widget.initialModel);
+    // CORRECCIÓN: Usar widget.modelType
+    _controller = CameraInferenceController(initialModel: widget.modelType);
     _controller.initialize().catchError((error) {
       if (mounted) {
         _showError('Model Loading Error', error.toString());
@@ -122,7 +123,7 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
-      backgroundColor: Colors.black.withValues(alpha: 0.85),
+      backgroundColor: Colors.black.withOpacity(0.85),
       builder: (context) => VoiceSettingsSheet(
         initialSettings: _controller.voiceSettings,
         onChanged: _controller.updateVoiceSettings,
