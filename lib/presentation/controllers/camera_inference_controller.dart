@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -22,6 +21,7 @@ import '../../services/weather_service.dart';
 /// Controller that manages the state and business logic for camera inference
 class CameraInferenceController extends ChangeNotifier {
   // Detection state
+
   int _detectionCount = 0;
   double _currentFps = 0.0;
   int _frameCount = 0;
@@ -64,7 +64,7 @@ class CameraInferenceController extends ChangeNotifier {
   final VoiceCommandService _voiceCommandService = VoiceCommandService();
   final WeatherService _weatherService = WeatherService();
   final DistanceEstimatorProvider _distanceEstimatorProvider =
-      DistanceEstimatorProvider();
+  DistanceEstimatorProvider();
   DistanceEstimator? _distanceEstimator;
   bool _loggedMissingDistanceEstimator = false;
 
@@ -135,11 +135,14 @@ class CameraInferenceController extends ChangeNotifier {
     );
   }
 
+  // FUNCIONES CORREGIDAS: Añaden ModelType.Billetes32
   static double _defaultConfidence(ModelType model) {
     switch (model) {
       case ModelType.Interior:
       case ModelType.Exterior:
         return 0.5;
+      case ModelType.Billetes32: // Añadido el nuevo modelo
+        return 0.25; // Umbral más bajo para detección de objetos
     }
   }
 
@@ -147,6 +150,8 @@ class CameraInferenceController extends ChangeNotifier {
     switch (model) {
       case ModelType.Interior:
       case ModelType.Exterior:
+        return 30;
+      case ModelType.Billetes32: // Añadido el nuevo modelo
         return 30;
     }
   }
@@ -179,9 +184,9 @@ class CameraInferenceController extends ChangeNotifier {
     }
 
     final previousObstacles =
-        _processedDetections.closeObstacleLabels.join('|');
+    _processedDetections.closeObstacleLabels.join('|');
     final previousMovements =
-        _processedDetections.movementWarnings.join('|');
+    _processedDetections.movementWarnings.join('|');
     final previousSignal = _processedDetections.trafficLightSignal;
 
     final processed = _postProcessor.process(results);
@@ -252,6 +257,7 @@ class CameraInferenceController extends ChangeNotifier {
 
     if ((_currentZoomLevel - zoomLevel).abs() > 0.01) {
       _currentZoomLevel = zoomLevel;
+      _yoloController.setZoomLevel(zoomLevel);
       notifyListeners();
     }
   }
@@ -408,7 +414,7 @@ class CameraInferenceController extends ChangeNotifier {
       unawaited(_voiceAnnouncer.stop());
     }
     final status =
-        _isVoiceEnabled ? 'Narración activada.' : 'Narración desactivada.';
+    _isVoiceEnabled ? 'Narración activada.' : 'Narración desactivada.';
     _voiceCommandStatus = status;
     if (announce) {
       unawaited(
@@ -545,44 +551,44 @@ class CameraInferenceController extends ChangeNotifier {
       feedback = 'Repitiendo la última instrucción.';
       repeatInstruction = true;
     } else if (
-        _commandContainsAny(normalized, [
-              'sube',
-              'aumenta',
-              'incrementa',
-              'incrementar',
-              'agranda',
-              'agrandalo',
-              'amplia',
-              'amplialo',
-              'haz mas grande',
-              'mas grande',
-              'eleva',
-              'subir',
-              'crece',
-              'agrandar',
-            ]) &&
-            _commandContainsAny(normalized, textKeywords)) {
+    _commandContainsAny(normalized, [
+      'sube',
+      'aumenta',
+      'incrementa',
+      'incrementar',
+      'agranda',
+      'agrandalo',
+      'amplia',
+      'amplialo',
+      'haz mas grande',
+      'mas grande',
+      'eleva',
+      'subir',
+      'crece',
+      'agrandar',
+    ]) &&
+        _commandContainsAny(normalized, textKeywords)) {
       recognized = true;
       increaseFontScale();
       feedback = 'Aumentando tamaño de texto.';
     } else if (
-        _commandContainsAny(normalized, [
-              'baja',
-              'bajar',
-              'disminuye',
-              'disminuir',
-              'reduce',
-              'reducir',
-              'achica',
-              'haz mas pequeno',
-              'mas pequeno',
-              'mas chico',
-              'mas chiquito',
-              'decrementa',
-              'menor',
-              'encoge',
-            ]) &&
-            _commandContainsAny(normalized, textKeywords)) {
+    _commandContainsAny(normalized, [
+      'baja',
+      'bajar',
+      'disminuye',
+      'disminuir',
+      'reduce',
+      'reducir',
+      'achica',
+      'haz mas pequeno',
+      'mas pequeno',
+      'mas chico',
+      'mas chiquito',
+      'decrementa',
+      'menor',
+      'encoge',
+    ]) &&
+        _commandContainsAny(normalized, textKeywords)) {
       recognized = true;
       decreaseFontScale();
       feedback = 'Reduciendo tamaño de texto.';
@@ -596,10 +602,10 @@ class CameraInferenceController extends ChangeNotifier {
     ])) {
       recognized = true;
       feedback =
-          'Puedes pedirme que repita instrucciones, cambiar el tamaño de texto, activar o desactivar la narración, conocer los objetos detectados, preguntar la hora o consultar el clima.';
+      'Puedes pedirme que repita instrucciones, cambiar el tamaño de texto, activar o desactivar la narración, conocer los objetos detectados, preguntar la hora o consultar el clima.';
     } else if (
-        _commandContainsAny(normalized, ['activa', 'enciende', 'habilita', 'activar', 'pon', 'enciendelo', 'prende']) &&
-            _commandContainsAny(normalized, voiceKeywords)) {
+    _commandContainsAny(normalized, ['activa', 'enciende', 'habilita', 'activar', 'pon', 'enciendelo', 'prende']) &&
+        _commandContainsAny(normalized, voiceKeywords)) {
       recognized = true;
       if (_isVoiceEnabled) {
         feedback = 'La narración ya está activada.';
@@ -608,8 +614,8 @@ class CameraInferenceController extends ChangeNotifier {
         feedback = 'Narración activada.';
       }
     } else if (
-        _commandContainsAny(normalized, ['desactiva', 'apaga', 'silencia', 'silencio', 'deshabilita', 'quita', 'calla', 'apagala']) &&
-            _commandContainsAny(normalized, voiceKeywords)) {
+    _commandContainsAny(normalized, ['desactiva', 'apaga', 'silencia', 'silencio', 'deshabilita', 'quita', 'calla', 'apagala']) &&
+        _commandContainsAny(normalized, voiceKeywords)) {
       recognized = true;
       if (_isVoiceEnabled) {
         toggleVoice(announce: false);
@@ -634,7 +640,7 @@ class CameraInferenceController extends ChangeNotifier {
       final count = _detectionCount;
       final objectLabel = count == 1 ? 'objeto' : 'objetos';
       final detectionMessage =
-          count > 0 ? 'Detecto $count $objectLabel.' : 'No detecto objetos ahora.';
+      count > 0 ? 'Detecto $count $objectLabel.' : 'No detecto objetos ahora.';
       feedback = detectionMessage;
     } else if (_commandContainsAny(normalized, [
       'hora',
@@ -907,7 +913,7 @@ class CameraInferenceController extends ChangeNotifier {
     String? newConnectionAlert;
     if (hasModel && connectionDelay > const Duration(seconds: 5)) {
       newConnectionAlert =
-          'No recibo datos de detección, revisa tu conexión o reinicia la cámara.';
+      'No recibo datos de detección, revisa tu conexión o reinicia la cámara.';
     }
 
     if (newConnectionAlert != _connectionAlert) {
@@ -920,7 +926,7 @@ class CameraInferenceController extends ChangeNotifier {
     if (lastNonEmpty != null) {
       if (now.difference(lastNonEmpty) > const Duration(seconds: 6)) {
         newCameraAlert =
-            'No detecto objetos desde hace varios segundos, verifica que la cámara no esté obstruida.';
+        'No detecto objetos desde hace varios segundos, verifica que la cámara no esté obstruida.';
       }
     } else if (hasModel && connectionDelay > const Duration(seconds: 8)) {
       newCameraAlert = 'No puedo ver la imagen de la cámara.';
@@ -1010,10 +1016,10 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   Future<void> _announceSystemMessage(
-    String message, {
-    bool force = false,
-    bool bypassCooldown = false,
-  }) async {
+      String message, {
+        bool force = false,
+        bool bypassCooldown = false,
+      }) async {
     if (!force && !_isVoiceEnabled) return;
 
     await _voiceAnnouncer.speakMessage(

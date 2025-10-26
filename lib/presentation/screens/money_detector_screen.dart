@@ -31,6 +31,7 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
   bool _isLoopPausedForProcessing = false;
   String _lastResult = '';
 
+  // Etiqueta para las 5 clases que detecta el modelo
   final List<String> _labels = ['1000', '2000', '5000', '10000', '20000'];
   static const Set<String> _noiseTokens = {
     'clp',
@@ -102,9 +103,10 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
 
   Future<void> _loadModel() async {
     try {
-      _interpreter = await Interpreter.fromAsset('assets/models/dinerocl.tflite');
+      _interpreter = await Interpreter.fromAsset('assets/models/billetes32.tflite');
+
       setState(() => _isModelLoaded = true);
-      debugPrint('✅ Modelo cargado correctamente');
+      debugPrint('✅ Modelo billetes32.tflite cargado correctamente');
     } catch (error) {
       debugPrint('❌ Error al cargar modelo: $error');
       await _speak('No pude cargar el modelo de billetes.');
@@ -224,6 +226,7 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
     } catch (_) {}
   }
 
+  // FUNCIÓN CORREGIDA FINAL: Soluciona el problema de inversión de dimensiones
   Future<void> _analyzeOnce() async {
     if (!_isModelLoaded || !_isCameraReady || _controller == null || _interpreter == null) {
       _shouldResumeLoop = true;
@@ -240,15 +243,19 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
         throw Exception('Imagen inválida');
       }
 
-      final resized = img.copyResize(image, width: 224, height: 224);
+      const int inputSize = 640;
+      // 1. Redimensionar a 640x640
+      final resized = img.copyResize(image, width: inputSize, height: inputSize);
+
       final input = List.generate(
         1,
-        (_) => List.generate(
-          224,
-          (y) => List.generate(
-            224,
-            (x) {
+            (_) => List.generate(
+          inputSize,
+              (y) => List.generate(
+            inputSize,
+                (x) {
               final pixel = resized.getPixel(x, y);
+              // Normalización a rango [-1, 1]
               return [
                 (pixel.r / 127.5) - 1.0,
                 (pixel.g / 127.5) - 1.0,
@@ -262,31 +269,60 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
         growable: false,
       );
 
+      // 2. CORRECCIÓN CLAVE: Inicializar el output buffer para la forma YOLOv8 [1, 15, 8400]
+      // (1 lote, 15 features, 8400 boxes), según lo reportado por el intérprete.
+      const int numFeatures = 15;
+      const int numBoxes = 8400;
+
       final output = List.generate(
         1,
-        (_) => List<double>.filled(_labels.length, 0, growable: false),
+            (_) => List.generate(
+          numFeatures, // 15 features
+              (i) => List<double>.filled(numBoxes, 0, growable: false), // 8400 boxes
+          growable: false,
+        ),
         growable: false,
       );
-      _interpreter!.run(input, output);
-      final probabilities = output.first;
-      debugPrint('📊 Output: $probabilities');
 
-      var resultIndex = 0;
-      var maxVal = -double.infinity;
-      for (var i = 0; i < probabilities.length; i++) {
-        if (probabilities[i] > maxVal) {
-          maxVal = probabilities[i];
-          resultIndex = i;
+      _interpreter!.run(input, output);
+
+      // 3. Post-procesamiento YOLO: Se necesita la matriz [15][8400]
+      final List<List<double>> outputMatrix = output.first.cast<List<double>>();
+      final int numClasses = _labels.length; // 5
+
+      String detectedLabel = 'No se pudo identificar el billete';
+      double maxConfidence = 0.0;
+
+      // Itera sobre las 8400 posibles cajas de predicción
+      for (int i = 0; i < numBoxes; i++) {
+        // 5º elemento (índice 4) es la puntuación de objeto (objectness)
+        final double objectness = outputMatrix[4][i];
+
+        for (int j = 0; j < numClasses; j++) {
+          // Puntuación de la clase = índice 5 + índice de la clase
+          // Usamos outputMatrix[feature_index][box_index]
+          final double classScore = outputMatrix[5 + j][i];
+          final double totalConfidence = objectness * classScore;
+
+          if (totalConfidence > maxConfidence) {
+            maxConfidence = totalConfidence;
+            detectedLabel = _labels[j];
+          }
         }
       }
 
-      final label = _labels[resultIndex];
-      _lastResult = label;
+      // Umbral mínimo de confianza (ajustado para que al menos detecte algo)
+      if (maxConfidence < 0.25) {
+        detectedLabel = 'No se pudo identificar el billete';
+      }
+
+      _lastResult = detectedLabel;
       await _speak(
-        'Este billete es de $label pesos. Puedes decir \'Analízalo\' para otro billete.',
+        detectedLabel == 'No se pudo identificar el billete'
+            ? detectedLabel
+            : 'Este billete es de $detectedLabel pesos. Puedes decir \'Analízalo\' para otro billete.',
       );
-      _shouldResumeLoop = true;
-      _isLoopPausedForProcessing = false;
+
     } catch (error) {
       debugPrint('❌ Error analizando billete: $error');
       await _speak('Ocurrió un error al analizar el billete.');
@@ -318,42 +354,42 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
       body: !_isCameraReady || controller == null
           ? const Center(child: CircularProgressIndicator())
           : Stack(
-              alignment: Alignment.center,
-              children: [
-                CameraPreview(controller),
-                if (_isAnalyzing)
-                  Container(
-                    color: Colors.black45,
-                    child: const Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircularProgressIndicator(color: Colors.white),
-                          SizedBox(height: 16),
-                          Text(
-                            'Analizando...',
-                            style: TextStyle(color: Colors.white, fontSize: 20),
-                          ),
-                        ],
-                      ),
+        alignment: Alignment.center,
+        children: [
+          CameraPreview(controller),
+          if (_isAnalyzing)
+            Container(
+              color: Colors.black45,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 16),
+                    Text(
+                      'Analizando...',
+                      style: TextStyle(color: Colors.white, fontSize: 20),
                     ),
-                  ),
-                Positioned(
-                  bottom: 20,
-                  child: Text(
-                    _lastResult.isNotEmpty
-                        ? 'Billete detectado: $_lastResult'
-                        : "Di 'Analízalo' para comenzar",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      backgroundColor: Colors.black54,
-                    ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
+          Positioned(
+            bottom: 20,
+            child: Text(
+              _lastResult.isNotEmpty
+                  ? 'Billete detectado: $_lastResult'
+                  : "Di 'Analízalo' para comenzar",
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                backgroundColor: Colors.black54,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
