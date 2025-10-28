@@ -81,7 +81,7 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
       final jpegBytes = _convertYUVToJpeg(image);
       await _sendToRoboflow(jpegBytes);
     } catch (e) {
-      debugPrint("❌ Error procesamiento: $e");
+      debugPrint("Error procesamiento: $e");
     } finally {
       _isProcessing = false;
     }
