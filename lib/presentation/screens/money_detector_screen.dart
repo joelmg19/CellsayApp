@@ -1,12 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
-
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:image/image.dart' as img;
-import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class MoneyDetectorScreen extends StatefulWidget {
   const MoneyDetectorScreen({super.key});
@@ -16,376 +17,162 @@ class MoneyDetectorScreen extends StatefulWidget {
 }
 
 class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
-  CameraController? _controller;
-  Interpreter? _interpreter;
+  late CameraController _controller;
+  bool _isProcessing = false;
+  bool _initialized = false;
+
   final FlutterTts _tts = FlutterTts();
-  final stt.SpeechToText _speech = stt.SpeechToText();
+  final String _apiKey = 'rx16MJGY0rif2b1WcdJC';
+  final String _modelId = 'billetescl-syltq';
+  final String _version = '5';
 
-  bool _isModelLoaded = false;
-  bool _isCameraReady = false;
-  bool _isAnalyzing = false;
-  bool _hasWelcomed = false;
-  bool _isListening = false;
-  bool _isLoopRunning = false;
-  bool _shouldResumeLoop = false;
-  bool _isLoopPausedForProcessing = false;
-  String _lastResult = '';
+  // 🔊 Tiempo mínimo entre voces iguales
+  Duration voiceCooldown = const Duration(seconds: 3);
+  DateTime lastVoiceTime = DateTime.now().subtract(const Duration(seconds: 5));
 
-  // Etiqueta para las 5 clases que detecta el modelo
-  final List<String> _labels = ['1000', '2000', '5000', '10000', '20000'];
-  static const Set<String> _noiseTokens = {
-    'clp',
-    'peso',
-    'pesos',
-    'billete',
-    'moneda',
-    'mx\$',
-    'mxn',
+  List<Map<String, dynamic>> _detections = [];
+  double? _imgW;
+  double? _imgH;
+  final Map<String, String> labelToSpeech = {
+    "billete_1000": "Billete de mil pesos chilenos",
+    "billete_2000": "Billete de dos mil pesos chilenos",
+    "billete_5000": "Billete de cinco mil pesos chilenos",
+    "billete_10000": "Billete de diez mil pesos chilenos",
+    "billete_20000": "Billete de veinte mil pesos chilenos",
   };
 
   @override
   void initState() {
     super.initState();
-    _initAll();
+    _initTTS();
+    _initCamera();
   }
 
-  Future<void> _initAll() async {
-    await _initializeCamera();
-    await _loadModel();
-
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (!_hasWelcomed) {
-      _hasWelcomed = true;
-      _tts.setCompletionHandler(() {
-        if ((_shouldResumeLoop && !_isLoopPausedForProcessing) ||
-            (!_isLoopRunning && !_isLoopPausedForProcessing)) {
-          _shouldResumeLoop = false;
-          _startListeningLoop();
-        }
-      });
-      await _speak(
-        "Bienvenido a la sección de billetes chilenos. Di 'Analízalo' cuando quieras identificar el billete.",
-        rate: 0.8,
-      );
-    } else {
-      _startListeningLoop();
-    }
+  Future<void> _initTTS() async {
+    await _tts.setLanguage('es-ES');
+    await _tts.setSpeechRate(0.9);
   }
 
-  Future<void> _initializeCamera() async {
-    try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) {
-        await _speak('No se encontró una cámara disponible.');
-        return;
-      }
-      final camera = cameras.first;
-      final controller = CameraController(
-        camera,
-        ResolutionPreset.medium,
-        enableAudio: false,
-      );
-      await controller.initialize();
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      setState(() {
-        _controller = controller;
-        _isCameraReady = true;
-      });
-    } catch (error) {
-      debugPrint('❌ Error al inicializar cámara: $error');
-      await _speak('No pude iniciar la cámara.');
-    }
-  }
+  Future<void> _initCamera() async {
+    final status = await Permission.camera.request();
+    if (!status.isGranted) return;
 
-  Future<void> _loadModel() async {
-    try {
-      _interpreter = await Interpreter.fromAsset('assets/models/billetes32.tflite');
-
-      setState(() => _isModelLoaded = true);
-      debugPrint('✅ Modelo billetes32.tflite cargado correctamente');
-    } catch (error) {
-      debugPrint('❌ Error al cargar modelo: $error');
-      await _speak('No pude cargar el modelo de billetes.');
-    }
-  }
-
-  Future<void> _startListeningLoop() async {
-    if ((_isLoopRunning && !_isLoopPausedForProcessing) || !mounted) return;
-    _isLoopRunning = true;
-    try {
-      while (mounted && _isLoopRunning) {
-        await _listenForCommand();
-        if (!mounted || !_isLoopRunning) break;
-        await Future.delayed(const Duration(milliseconds: 500));
-      }
-    } finally {
-      _isLoopRunning = false;
-    }
-  }
-
-  Future<void> _listenForCommand() async {
-    if (!_isModelLoaded || !_isCameraReady || _isListening) {
-      return;
-    }
-
-    final available = await _speech.initialize(
-      onStatus: (status) {
-        debugPrint('🎤 Estado: $status');
-        if (status == 'done' || status == 'notListening') {
-          _isListening = false;
-          _shouldResumeLoop = true;
-        }
-      },
-      onError: (error) {
-        debugPrint('❌ Error STT: $error');
-        _isListening = false;
-        _shouldResumeLoop = true;
-      },
+    final cameras = await availableCameras();
+    _controller = CameraController(
+      cameras.first,
+      ResolutionPreset.medium,
+      enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.yuv420,
     );
 
-    if (!available) {
-      await _speak('No se pudo activar el micrófono.');
-      return;
-    }
+    await _controller.initialize();
+    setState(() => _initialized = true);
 
-    _isListening = true;
-    debugPrint('🎧 Escuchando...');
-
-    final started = await _speech.listen(
-      localeId: 'es_CL',
-      partialResults: false,
-      listenFor: const Duration(seconds: 15),
-      pauseFor: const Duration(seconds: 7),
-      cancelOnError: false,
-      onResult: (result) async {
-        if (!result.finalResult) return;
-        final command = result.recognizedWords.toLowerCase().trim();
-        debugPrint('🗣 Comando detectado: $command');
-
-        if (_shouldAnalyze(command) && !_isAnalyzing) {
-          await _stopListeningSession(pauseLoop: true);
-          await _speak('Analizando billete...');
-          await Future.delayed(const Duration(seconds: 1));
-          await _analyzeOnce();
-        }
-      },
-    );
-
-    if (started is bool && !started) {
-      _isListening = false;
-      _shouldResumeLoop = true;
-    }
+    _controller.startImageStream(_processCameraStream);
   }
 
-  Future<void> _stopListeningSession({bool pauseLoop = false}) async {
-    if (pauseLoop) {
-      _isLoopRunning = false;
-      _isLoopPausedForProcessing = true;
-    }
+  Future<void> _processCameraStream(CameraImage image) async {
+    final now = DateTime.now();
+    if (_isProcessing || now.difference(lastVoiceTime) < const Duration(seconds: 2)) return;
 
-    if (_isListening) {
-      try {
-        await _speech.stop();
-      } catch (error) {
-        debugPrint('❌ Error deteniendo escucha: $error');
-      }
-    }
-    _isListening = false;
-  }
+    _isProcessing = true;
 
-  bool _shouldAnalyze(String command) {
-    final normalized = _normalizeCommand(command);
-    return normalized.contains('analizalo') ||
-        normalized.contains('analiza lo') ||
-        normalized.contains('analizar');
-  }
-
-  String _normalizeCommand(String command) {
-    var normalized = command
-        .replaceAll('á', 'a')
-        .replaceAll('é', 'e')
-        .replaceAll('í', 'i')
-        .replaceAll('ó', 'o')
-        .replaceAll('ú', 'u');
-    for (final token in _noiseTokens) {
-      normalized = normalized.replaceAll(token, '').trim();
-    }
-    return normalized;
-  }
-
-  Future<void> _speak(String text, {double rate = 0.9}) async {
     try {
-      await _tts.stop();
-      await _tts.setLanguage('es-CL');
-      await _tts.setSpeechRate(rate);
-      await _tts.speak(text);
-    } catch (_) {}
-  }
-
-  // FUNCIÓN CORREGIDA FINAL: Soluciona el problema de inversión de dimensiones
-  Future<void> _analyzeOnce() async {
-    if (!_isModelLoaded || !_isCameraReady || _controller == null || _interpreter == null) {
-      _shouldResumeLoop = true;
-      _isLoopPausedForProcessing = false;
-      return;
-    }
-
-    setState(() => _isAnalyzing = true);
-    try {
-      final picture = await _controller!.takePicture();
-      final bytes = await picture.readAsBytes();
-      final image = img.decodeImage(bytes);
-      if (image == null) {
-        throw Exception('Imagen inválida');
-      }
-
-      const int inputSize = 640;
-      // 1. Redimensionar a 640x640
-      final resized = img.copyResize(image, width: inputSize, height: inputSize);
-
-      final input = List.generate(
-        1,
-            (_) => List.generate(
-          inputSize,
-              (y) => List.generate(
-            inputSize,
-                (x) {
-              final pixel = resized.getPixel(x, y);
-              // Normalización a rango [-1, 1]
-              return [
-                (pixel.r / 127.5) - 1.0,
-                (pixel.g / 127.5) - 1.0,
-                (pixel.b / 127.5) - 1.0,
-              ];
-            },
-            growable: false,
-          ),
-          growable: false,
-        ),
-        growable: false,
-      );
-
-      // 2. CORRECCIÓN CLAVE: Inicializar el output buffer para la forma YOLOv8 [1, 15, 8400]
-      // (1 lote, 15 features, 8400 boxes), según lo reportado por el intérprete.
-      const int numFeatures = 15;
-      const int numBoxes = 8400;
-
-      final output = List.generate(
-        1,
-            (_) => List.generate(
-          numFeatures, // 15 features
-              (i) => List<double>.filled(numBoxes, 0, growable: false), // 8400 boxes
-          growable: false,
-        ),
-        growable: false,
-      );
-
-      _interpreter!.run(input, output);
-
-      // 3. Post-procesamiento YOLO: Se necesita la matriz [15][8400]
-      final List<List<double>> outputMatrix = output.first.cast<List<double>>();
-      final int numClasses = _labels.length; // 5
-
-      String detectedLabel = 'No se pudo identificar el billete';
-      double maxConfidence = 0.0;
-
-      // Itera sobre las 8400 posibles cajas de predicción
-      for (int i = 0; i < numBoxes; i++) {
-        // 5º elemento (índice 4) es la puntuación de objeto (objectness)
-        final double objectness = outputMatrix[4][i];
-
-        for (int j = 0; j < numClasses; j++) {
-          // Puntuación de la clase = índice 5 + índice de la clase
-          // Usamos outputMatrix[feature_index][box_index]
-          final double classScore = outputMatrix[5 + j][i];
-          final double totalConfidence = objectness * classScore;
-
-          if (totalConfidence > maxConfidence) {
-            maxConfidence = totalConfidence;
-            detectedLabel = _labels[j];
-          }
-        }
-      }
-
-      // Umbral mínimo de confianza (ajustado para que al menos detecte algo)
-      if (maxConfidence < 0.25) {
-        detectedLabel = 'No se pudo identificar el billete';
-      }
-
-      _lastResult = detectedLabel;
-      await _speak(
-        detectedLabel == 'No se pudo identificar el billete'
-            ? detectedLabel
-            : 'Este billete es de $detectedLabel pesos. Puedes decir \'Analízalo\' para otro billete.',
-      );
-
-    } catch (error) {
-      debugPrint('❌ Error analizando billete: $error');
-      await _speak('Ocurrió un error al analizar el billete.');
-      _shouldResumeLoop = true;
-      _isLoopPausedForProcessing = false;
+      final jpegBytes = _convertYUVToJpeg(image);
+      await _sendToRoboflow(jpegBytes);
+    } catch (e) {
+      debugPrint("❌ Error procesamiento: $e");
     } finally {
-      if (mounted) {
-        setState(() => _isAnalyzing = false);
-      } else {
-        _isAnalyzing = false;
+      _isProcessing = false;
+    }
+  }
+
+  Uint8List _convertYUVToJpeg(CameraImage image) {
+    final width = image.width;
+    final height = image.height;
+    final imgRGB = img.Image(width: width, height: height);
+
+    final yPlane = image.planes[0];
+    final uPlane = image.planes[1];
+    final vPlane = image.planes[2];
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final yp = yPlane.bytes[y * yPlane.bytesPerRow + x];
+        final uvIndex = (y ~/ 2) * uPlane.bytesPerRow + (x ~/ 2) * (uPlane.bytesPerPixel ?? 1);
+
+        final up = uPlane.bytes[uvIndex];
+        final vp = vPlane.bytes[uvIndex];
+
+        int r = (yp + 1.370705 * (vp - 128)).clamp(0, 255).toInt();
+        int g = (yp - 0.698001 * (vp - 128) - 0.337633 * (up - 128)).clamp(0, 255).toInt();
+        int b = (yp + 1.732446 * (up - 128)).clamp(0, 255).toInt();
+
+        imgRGB.setPixelRgba(x, y, r, g, b, 255);
+      }
+    }
+
+    return Uint8List.fromList(img.encodeJpg(imgRGB, quality: 90));
+  }
+
+  Future<void> _sendToRoboflow(Uint8List bytes) async {
+    final uri = Uri.parse(
+        "https://detect.roboflow.com/$_modelId/$_version?api_key=$_apiKey&confidence=40");
+
+    final request = http.MultipartRequest("POST", uri)
+      ..files.add(http.MultipartFile.fromBytes("file", bytes,
+          filename: "img.jpg", contentType: MediaType("image", "jpeg")));
+
+    final body = await http.Response.fromStream(await request.send());
+
+    if (body.statusCode != 200) return;
+
+    final data = jsonDecode(body.body);
+    final preds = List<Map<String, dynamic>>.from(data["predictions"]);
+    final imgData = data["image"];
+
+    setState(() {
+      _detections = preds;
+      _imgW = (imgData?["width"] ?? 0).toDouble();
+      _imgH = (imgData?["height"] ?? 0).toDouble();
+    });
+
+    if (preds.isNotEmpty) {
+      final label = preds.first["class"];
+
+      final now = DateTime.now();
+      if (now.difference(lastVoiceTime) > voiceCooldown) {
+        lastVoiceTime = now;
+        final speech = labelToSpeech[label] ?? "Billete";
+        await _tts.speak(speech);
       }
     }
   }
 
   @override
   void dispose() {
-    _controller?.dispose();
-    _interpreter?.close();
+    _controller.dispose();
     _tts.stop();
-    _speech.stop();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = _controller;
+    if (!_initialized) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Detección de Billetes por Voz')),
-      body: !_isCameraReady || controller == null
-          ? const Center(child: CircularProgressIndicator())
-          : Stack(
-        alignment: Alignment.center,
+      appBar: AppBar(title: const Text("Detector de Billetes")),
+      body: Stack(
+        fit: StackFit.expand,
         children: [
-          CameraPreview(controller),
-          if (_isAnalyzing)
-            Container(
-              color: Colors.black45,
-              child: const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(color: Colors.white),
-                    SizedBox(height: 16),
-                    Text(
-                      'Analizando...',
-                      style: TextStyle(color: Colors.white, fontSize: 20),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          Positioned(
-            bottom: 20,
-            child: Text(
-              _lastResult.isNotEmpty
-                  ? 'Billete detectado: $_lastResult'
-                  : "Di 'Analízalo' para comenzar",
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                backgroundColor: Colors.black54,
-              ),
+          CameraPreview(_controller),
+          CustomPaint(
+            painter: DetectionPainter(
+              detections: _detections,
+              rawImageW: _imgW,
+              rawImageH: _imgH,
             ),
           ),
         ],
@@ -393,3 +180,60 @@ class _MoneyDetectorScreenState extends State<MoneyDetectorScreen> {
     );
   }
 }
+
+class DetectionPainter extends CustomPainter {
+  final List<Map<String, dynamic>> detections;
+  final double? rawImageW;
+  final double? rawImageH;
+
+  DetectionPainter({
+    required this.detections,
+    required this.rawImageW,
+    required this.rawImageH,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (rawImageW == null || rawImageH == null) return;
+
+    final sx = size.width / rawImageW!;
+    final sy = size.height / rawImageH!;
+
+    final rectPaint = Paint()
+      ..color = Colors.greenAccent
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke;
+
+    final textStyle = const TextStyle(
+      color: Colors.white,
+      fontSize: 13,
+      backgroundColor: Colors.black87,
+    );
+
+    for (var det in detections) {
+      final x = det["x"].toDouble();
+      final y = det["y"].toDouble();
+      final w = det["width"].toDouble();
+      final h = det["height"].toDouble();
+      final label = det["class"];
+
+      final left = (x - w / 2) * sx;
+      final top = (y - h / 2) * sy;
+
+      canvas.drawRect(Rect.fromLTWH(left, top, w * sx, h * sy), rectPaint);
+
+      final tp = TextPainter(
+        text: TextSpan(text: label, style: textStyle),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      tp.paint(canvas, Offset(left, top - 18));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+
+
