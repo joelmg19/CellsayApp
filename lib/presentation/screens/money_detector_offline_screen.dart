@@ -28,20 +28,23 @@ class _MoneyDetectorOfflineScreenState
 
   final FlutterTts _tts = FlutterTts();
   final YOLOViewController _yoloController = YOLOViewController();
-  final Duration _voiceCooldown = const Duration(seconds: 3);
-  final Map<String, String> _labelToSpeech = {
-    'billete_1000': 'Billete de mil pesos chilenos',
-    'billete_2000': 'Billete de dos mil pesos chilenos',
-    'billete_5000': 'Billete de cinco mil pesos chilenos',
-    'billete_10000': 'Billete de diez mil pesos chilenos',
-    'billete_20000': 'Billete de veinte mil pesos chilenos',
+  final Duration _voiceCooldown = const Duration(seconds: 4);
+  final Map<String, int> _labelToValue = const {
+    'billete_1000': 1000,
+    'billete_2000': 2000,
+    'billete_5000': 5000,
+    'billete_10000': 10000,
+    'billete_20000': 20000,
   };
 
   List<YOLOResult> _detections = const [];
+  Map<String, int> _classCounts = const {};
+  int _currentTotal = 0;
   String? _modelPath;
   bool _isPreparingModel = true;
   String? _errorMessage;
   DateTime _lastVoice = DateTime.fromMillisecondsSinceEpoch(0);
+  int _lastAnnouncedTotal = 0;
 
   @override
   void initState() {
@@ -107,32 +110,48 @@ class _MoneyDetectorOfflineScreenState
         }
       }
     }
+    final summary = _summarizeDetections(detections);
     setState(() {
       _detections = detections;
+      _classCounts = summary.counts;
+      _currentTotal = summary.total;
     });
-    unawaited(_announceDetection(detections));
+    unawaited(_announceTotal(summary.total));
   }
 
-  Future<void> _announceDetection(List<YOLOResult> detections) async {
-    if (detections.isEmpty) return;
-    final now = DateTime.now();
-    if (now.difference(_lastVoice) < _voiceCooldown) return;
-
-    YOLOResult? best;
-    double bestConfidence = 0;
-    for (final result in detections) {
-      final confidence = extractConfidence(result) ?? 0;
-      if (confidence > bestConfidence) {
-        bestConfidence = confidence;
-        best = result;
-      }
+  ({Map<String, int> counts, int total}) _summarizeDetections(
+    List<YOLOResult> detections,
+  ) {
+    final counts = <String, int>{};
+    int total = 0;
+    for (final detection in detections) {
+      final label = extractLabel(detection);
+      if (label == null) continue;
+      if (!_labelToValue.containsKey(label)) continue;
+      counts[label] = (counts[label] ?? 0) + 1;
     }
-    if (best == null) return;
+    counts.forEach((label, count) {
+      final value = _labelToValue[label] ?? 0;
+      total += value * count;
+    });
+    return (counts: counts, total: total);
+  }
 
-    final label = extractLabel(best);
-    final phrase = _labelToSpeech[label] ?? 'Billete detectado';
+  Future<void> _announceTotal(int total) async {
+    if (total <= 0 && _lastAnnouncedTotal <= 0) return;
+
+    final now = DateTime.now();
+    final bool totalChanged = total != _lastAnnouncedTotal;
+    final bool cooldownReached = now.difference(_lastVoice) >= _voiceCooldown;
+
+    if (!totalChanged && !cooldownReached) {
+      return;
+    }
+
+    final phrase = 'El total es $total pesos.';
     await _tts.speak(phrase);
     _lastVoice = DateTime.now();
+    _lastAnnouncedTotal = total;
   }
 
   @override
@@ -225,11 +244,17 @@ class _MoneyDetectorOfflineScreenState
             ),
           ),
         ),
-        Positioned(
-          left: 16,
-          right: 16,
-          bottom: 24,
-          child: _DetectionsPanel(detections: _detections),
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: _DetectionsPanel(
+                total: _currentTotal,
+                classCounts: _classCounts,
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -299,61 +324,82 @@ class _MoneyDetectionsPainter extends CustomPainter {
 }
 
 class _DetectionsPanel extends StatelessWidget {
-  const _DetectionsPanel({required this.detections});
+  const _DetectionsPanel({
+    required this.total,
+    required this.classCounts,
+  });
 
-  final List<YOLOResult> detections;
+  final int total;
+  final Map<String, int> classCounts;
+
+  String _formatCurrency(int amount) {
+    if (amount <= 0) return 'CLP 0';
+    final digits = amount.toString().split('').reversed.toList();
+    final buffer = StringBuffer();
+    for (int i = 0; i < digits.length; i++) {
+      if (i != 0 && i % 3 == 0) {
+        buffer.write('.');
+      }
+      buffer.write(digits[i]);
+    }
+    final formatted = buffer.toString().split('').reversed.join();
+    return 'CLP $formatted';
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (detections.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(16),
+    final hasDetections = classCounts.isNotEmpty && total > 0;
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 420),
+      child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(16),
+          color: Colors.black.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(20),
         ),
-        child: const Text(
-          'Sin billetes detectados. Apunta a un billete y espera la indicación por voz.',
-          style: TextStyle(color: Colors.white),
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-
-    final entries = detections.take(3).map((result) {
-      final label = extractLabel(result);
-      final confidence = (extractConfidence(result) ?? 0) * 100;
-      return '$label • ${confidence.toStringAsFixed(1)}%';
-    }).toList();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.6),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            'Detecciones',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 8),
-          for (final entry in entries)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Text(
-                entry,
-                style: const TextStyle(color: Colors.white),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                hasDetections
+                    ? 'Total detectado: ${_formatCurrency(total)}'
+                    : 'Sin billetes detectados',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-        ],
+              const SizedBox(height: 8),
+              if (hasDetections)
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: classCounts.entries.map((entry) {
+                    final label = entry.key.replaceAll('_', ' ');
+                    return Chip(
+                      label: Text('$label · ${entry.value}'),
+                      backgroundColor: Colors.white.withOpacity(0.12),
+                      labelStyle: const TextStyle(color: Colors.white),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(color: Colors.white24),
+                      ),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    );
+                  }).toList(),
+                )
+              else
+                const Text(
+                  'Apunta la cámara a los billetes para detectar el monto total.',
+                  style: TextStyle(color: Colors.white70),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
