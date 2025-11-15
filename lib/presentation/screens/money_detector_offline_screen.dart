@@ -35,6 +35,11 @@ class _MoneyDetectorOfflineScreenState
     'billete_5000': 5000,
     'billete_10000': 10000,
     'billete_20000': 20000,
+    'clp_1000': 1000,
+    'clp_2000': 2000,
+    'clp_5000': 5000,
+    'clp_10000': 10000,
+    'clp_20000': 20000,
   };
 
   List<YOLOResult> _detections = const [];
