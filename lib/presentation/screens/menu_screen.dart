@@ -86,6 +86,14 @@ class _MenuScreenState extends State<MenuScreen> {
 
   void _handleVoice(String words) async {
     final t = words.toLowerCase();
+    if (t.contains('dinero') &&
+        (t.contains('offline') || t.contains('local') || t.contains('internet'))) {
+      await _stt.stop();
+      setState(() => _isListening = false);
+      if (!mounted) return;
+      Navigator.pushNamed(context, '/money-offline');
+      return;
+    }
     if (t.contains('dinero')) {
       await _stt.stop();
       setState(() => _isListening = false);
@@ -146,9 +154,14 @@ class _MenuScreenState extends State<MenuScreen> {
     final buttons = <_BigButton>[
       // 1. Botón para el modo de voz (el que tenías antes)
       _BigButton(
-        label: 'Dinero',
+        label: 'Dinero (API)',
         icon: Icons.attach_money_rounded,
         onTap: () => Navigator.pushNamed(context, '/money'),
+      ),
+      _BigButton(
+        label: 'Dinero Offline',
+        icon: Icons.money_off,
+        onTap: () => Navigator.pushNamed(context, '/money-offline'),
       ),
       _BigButton(
         label: 'Objetos',
