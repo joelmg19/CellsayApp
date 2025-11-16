@@ -501,21 +501,18 @@ class CameraInferenceController extends ChangeNotifier {
         }
       }
 
-      final rawText = textBuffer.isNotEmpty
-          ? textBuffer.toString().trim()
-          : recognized.text.replaceAll('\n', ' ').trim();
-      final normalizedText = _normalizeCartelText(rawText);
-      final cleaned = _textCleaner.clean(normalizedText);
-
-      if (cleaned.formattedText.isEmpty) {
+      if (textBuffer.isEmpty) {
         return;
       }
 
-      if (cleaned.canonicalText == _lastCanonicalSign) {
-        return;
-      }
+      final rawText = textBuffer.toString().trim();
+      final cleaned = _textCleaner.clean(rawText);
 
+      if (cleaned.formattedText.isEmpty) return;
+
+      if (cleaned.canonicalText == _lastCanonicalSign) return;
       _lastCanonicalSign = cleaned.canonicalText;
+
       _speakingLocked = true;
       _signResetTimer?.cancel();
 
@@ -525,12 +522,8 @@ class CameraInferenceController extends ChangeNotifier {
           bypassCooldown: true,
           storeAsLastMessage: false,
         );
-        debugPrint(
-          'OCR/VOICE -> announced sign canonical="${cleaned.canonicalText}"',
-        );
       } finally {
         _speakingLocked = false;
-        _signResetTimer?.cancel();
         _signResetTimer = Timer(const Duration(milliseconds: 2500), () {
           if (_isDisposed) return;
           _lastCanonicalSign = '';
