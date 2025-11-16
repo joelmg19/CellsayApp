@@ -7,6 +7,7 @@ import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:ultralytics_yolo_example/core/tts/text_cleaner.dart';
 
 class TextReaderScreen extends StatefulWidget {
   const TextReaderScreen({super.key});
@@ -20,13 +21,18 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
   late final TextRecognizer _recognizer;
   CameraController? _cameraController;
   final Queue<String> _pendingSpeech = Queue<String>();
-  final LinkedHashSet<String> _spokenSentences = LinkedHashSet<String>();
+  final TextCleaner _textCleaner = const TextCleaner();
   bool _isSpeaking = false;
   bool _isProcessingFrame = false;
   String _visibleText = '';
-  String _lastBlock = '';
+  String _lastProcessedText = '';
+  String _currentFormattedText = '';
+  String _lastSpokenCanonical = '';
+  bool _announceCompletion = false;
+  bool _readingLocked = false;
   bool _initializing = true;
   String? _errorMessage;
+  static const String _completionCue = 'Lectura finalizada';
   static final Rect _normalizedScanArea = Rect.fromCenter(
     center: const Offset(0.5, 0.45),
     width: 0.8,
@@ -88,7 +94,9 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
   }
 
   void _processCameraImage(CameraImage image) {
-    if (_isProcessingFrame || _cameraController == null) return;
+    if (_isProcessingFrame || _cameraController == null || _readingLocked) {
+      return;
+    }
     _isProcessingFrame = true;
 
     _handleCameraFrame(image, _cameraController!)
@@ -115,16 +123,36 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
         return;
       }
 
-      if (_lastBlock.isNotEmpty && text.length < _lastBlock.length / 2) {
-        _spokenSentences.clear();
+      final CleanTextResult cleaned = _textCleaner.clean(text);
+      if (cleaned.formattedText.isEmpty) {
+        _clearIfTextLost();
+        return;
       }
 
-      _lastBlock = text;
       if (!mounted) return;
-      if (text == _visibleText) return;
 
-      setState(() => _visibleText = text);
-      _scheduleSpeechFor(text);
+      final bool visibleChanged = text != _visibleText;
+      final bool formattedChanged = cleaned.formattedText != _currentFormattedText;
+      final bool canonicalChanged = cleaned.canonicalText != _lastProcessedText;
+
+      if (!visibleChanged && !formattedChanged && !canonicalChanged) {
+        return;
+      }
+
+      _lastProcessedText = cleaned.canonicalText;
+
+      if (visibleChanged || formattedChanged) {
+        setState(() {
+          if (visibleChanged) {
+            _visibleText = text;
+          }
+          if (formattedChanged) {
+            _currentFormattedText = cleaned.formattedText;
+          }
+        });
+      } else {
+        _currentFormattedText = cleaned.formattedText;
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = error.toString());
@@ -132,22 +160,42 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
   }
 
   void _clearIfTextLost() {
-    if (_visibleText.isEmpty) return;
-    setState(() => _visibleText = '');
-    _spokenSentences.clear();
-    _pendingSpeech.clear();
+    final bool hadVisible = _visibleText.isNotEmpty;
+    final bool hadFormatted = _currentFormattedText.isNotEmpty;
+    if (!hadVisible && _lastProcessedText.isEmpty && !hadFormatted) return;
+    if (hadVisible || hadFormatted) {
+      setState(() {
+        if (hadVisible) {
+          _visibleText = '';
+        }
+        if (hadFormatted) {
+          _currentFormattedText = '';
+        }
+      });
+    }
+    _lastProcessedText = '';
+    _resetSpeechState();
   }
 
-  void _scheduleSpeechFor(String text) {
+  void _resetSpeechState() {
+    _pendingSpeech.clear();
+    _announceCompletion = false;
+    if (_isSpeaking) {
+      _isSpeaking = false;
+      unawaited(_tts.stop());
+    }
+  }
+
+  bool _scheduleSpeechFor(String text) {
     final sentences = _splitIntoSentences(text);
-    if (sentences.isEmpty) return;
+    if (sentences.isEmpty) return false;
 
     for (final sentence in sentences) {
-      if (_spokenSentences.contains(sentence)) continue;
-      _spokenSentences.add(sentence);
       _pendingSpeech.add(sentence);
     }
+    _announceCompletion = true;
     _trySpeakNext();
+    return true;
   }
 
   List<String> _splitIntoSentences(String text) {
@@ -162,16 +210,79 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
         .toList(growable: false);
   }
 
-  void _trySpeakNext() {
-    if (_isSpeaking || _pendingSpeech.isEmpty) return;
-    final sentence = _pendingSpeech.removeFirst();
-    _isSpeaking = true;
-    _tts.speak(sentence).whenComplete(() {
-      _isSpeaking = false;
+  void _onReadButtonPressed() {
+    if (_readingLocked) {
+      unawaited(_cancelCurrentReading());
+      return;
+    }
+
+    final text = _currentFormattedText.trim();
+    final canonical = _lastProcessedText.trim();
+    if (text.isEmpty || canonical.isEmpty) {
+      return;
+    }
+    if (canonical == _lastSpokenCanonical) {
+      return;
+    }
+
+    setState(() => _readingLocked = true);
+    _resetSpeechState();
+    final scheduled = _scheduleSpeechFor(text);
+    if (!scheduled) {
       if (mounted) {
-        _trySpeakNext();
+        setState(() => _readingLocked = false);
+      } else {
+        _readingLocked = false;
       }
-    });
+    }
+  }
+
+  Future<void> _cancelCurrentReading() async {
+    _pendingSpeech.clear();
+    _announceCompletion = false;
+    _isSpeaking = false;
+    await _tts.stop();
+    if (mounted) {
+      setState(() => _readingLocked = false);
+    } else {
+      _readingLocked = false;
+    }
+  }
+
+  void _trySpeakNext() {
+    if (_isSpeaking) return;
+    if (_pendingSpeech.isNotEmpty) {
+      final sentence = _pendingSpeech.removeFirst();
+      _isSpeaking = true;
+      _tts.speak(sentence).whenComplete(() {
+        _isSpeaking = false;
+        if (mounted) {
+          _trySpeakNext();
+        }
+      });
+      return;
+    }
+
+    if (_announceCompletion) {
+      _announceCompletion = false;
+      _isSpeaking = true;
+      _tts.speak(_completionCue).whenComplete(() {
+        if (!mounted) return;
+        _isSpeaking = false;
+        setState(() {
+          _readingLocked = false;
+          _lastSpokenCanonical = _lastProcessedText;
+        });
+        _trySpeakNext();
+      });
+      return;
+    }
+
+    if (_readingLocked && mounted) {
+      setState(() => _readingLocked = false);
+    } else {
+      _readingLocked = false;
+    }
   }
 
   InputImage _inputImageFromCameraImage(
@@ -339,6 +450,8 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
   Widget build(BuildContext context) {
     final controller = _cameraController;
 
+    final bool canStartReading = _currentFormattedText.isNotEmpty && !_readingLocked;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Lectura de texto'),
@@ -440,7 +553,15 @@ class _TextReaderScreenState extends State<TextReaderScreen> {
                           ),
                         ),
                       ],
-                    ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: SafeArea(
+        child: FloatingActionButton.extended(
+          onPressed: (_readingLocked || canStartReading) ? _onReadButtonPressed : null,
+          icon: Icon(_readingLocked ? Icons.stop : Icons.volume_up_rounded),
+          label: Text(_readingLocked ? 'Detener lectura' : 'Lectura'),
+        ),
+      ),
     );
   }
 }
