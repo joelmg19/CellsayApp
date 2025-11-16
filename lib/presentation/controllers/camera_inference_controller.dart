@@ -21,6 +21,7 @@ import '../../core/vision/detection_distance_extension.dart';
 import '../../core/vision/detection_geometry.dart';
 import '../../core/vision/distance_estimator.dart';
 import '../../core/vision/distance_estimator_provider.dart';
+import '../../core/tts/text_cleaner.dart';
 import '../../models/detection_insight.dart';
 import '../../models/models.dart';
 import '../../models/voice_settings.dart';
@@ -34,11 +35,10 @@ import '../../services/weather_service.dart';
 /// Controller that manages the state and business logic for camera inference
 class CameraInferenceController extends ChangeNotifier {
   final TextRecognizer _textRecognizer = TextRecognizer();
+  final TextCleaner _textCleaner = const TextCleaner();
   bool _isOcrBusy = false;
   bool _isCaptureOcrActive = false;
   DateTime _lastOcrTimestamp = DateTime.now();
-  String? _lastAnnouncedOcrMessage;
-  DateTime? _lastAnnouncedOcrTimestamp;
   Uint8List? _cachedCartelImage;
   DateTime? _cachedCartelImageTimestamp;
   Timer? _voiceResumeTimer;
@@ -96,6 +96,9 @@ class CameraInferenceController extends ChangeNotifier {
   ModelType? _modelBeforeSignReader;
   DateTime? _lastSignToggleTimestamp;
   static const Duration _signToggleCooldown = Duration(milliseconds: 1500);
+  String _lastCanonicalSign = '';
+  bool _speakingLocked = false;
+  Timer? _signResetTimer;
   // --- FIN DE VARIABLES ORIGINALES ---
 
   // --- GETTERS ORIGINALES ---
@@ -234,8 +237,6 @@ class CameraInferenceController extends ChangeNotifier {
       if (!hasCartelDetections) {
         _cachedCartelImage = null;
         _cachedCartelImageTimestamp = null;
-        _lastAnnouncedOcrMessage = null;
-        _lastAnnouncedOcrTimestamp = null;
         shouldNotify = true;
       }
     }
@@ -418,7 +419,7 @@ class CameraInferenceController extends ChangeNotifier {
     ProcessedDetections processed,
     DateTime detectionTime,
   ) async {
-    if (_isDisposed) return;
+    if (_isDisposed || _speakingLocked) return;
 
     try {
       final cartelDetections = processed.filteredResults
@@ -461,7 +462,7 @@ class CameraInferenceController extends ChangeNotifier {
       final int w = decoded.width;
       final int h = decoded.height;
 
-      final buffer = StringBuffer();
+      final candidates = <MapEntry<YOLOResult, Rect>>[];
       for (final cartel in cartelDetections) {
         final rawCartelRect = extractBoundingBox(cartel);
         if (rawCartelRect == null) continue;
@@ -473,65 +474,61 @@ class CameraInferenceController extends ChangeNotifier {
         );
         if (rect == null) continue;
 
-        final textBuffer = StringBuffer();
-        for (final block in recognized.blocks) {
-          final blockRect = Rect.fromLTWH(
-            block.boundingBox.left / w,
-            block.boundingBox.top / h,
-            block.boundingBox.width / w,
-            block.boundingBox.height / h,
-          );
-          if (rect.overlaps(blockRect)) {
-            textBuffer
-              ..write(block.text.replaceAll('\n', ' '))
-              ..write(' ');
-          }
-        }
-
-        final text = textBuffer.toString().trim();
-        if (text.isNotEmpty) {
-          buffer
-            ..write(text)
-            ..write('. ');
-        }
+        candidates.add(MapEntry(cartel, rect));
       }
 
-      final announcement = buffer.toString().trim();
-      final safeAnnouncement = announcement.isNotEmpty
-          ? announcement
-          : recognized.text.replaceAll('\n', ' ').trim();
-      final normalizedAnnouncement =
-          _normalizeCartelText(safeAnnouncement);
-
-      final String finalAnnouncement = normalizedAnnouncement.isNotEmpty
-          ? 'Cartel detectado. Dice: $normalizedAnnouncement'
-          : 'Cartel detectado, pero no se pudo leer texto.';
-      final trimmedAnnouncement = finalAnnouncement.trim();
-
-      debugPrint(
-        'OCR/VOICE -> finalAnnouncement="$trimmedAnnouncement" (len=${trimmedAnnouncement.length})',
-      );
-
-      final now = DateTime.now();
-      if (_lastAnnouncedOcrMessage == trimmedAnnouncement &&
-          _lastAnnouncedOcrTimestamp != null &&
-          now.difference(_lastAnnouncedOcrTimestamp!) <
-              const Duration(seconds: 10)) {
-        debugPrint(
-          'OCR/VOICE -> bloqueado por antispam (mismo mensaje <10s).',
-        );
+      if (candidates.isEmpty) {
         return;
       }
 
-      _lastAnnouncedOcrMessage = trimmedAnnouncement;
-      _lastAnnouncedOcrTimestamp = now;
+      candidates.sort((a, b) =>
+          (b.value.width * b.value.height).compareTo(a.value.width * a.value.height));
 
-      await _announceSystemMessage(
-        trimmedAnnouncement,
-        force: true,
-        bypassCooldown: true,
-      );
-      debugPrint('OCR/VOICE -> speak enqueued');
+      final targetRect = candidates.first.value;
+
+      final textBuffer = StringBuffer();
+      for (final block in recognized.blocks) {
+        final blockRect = Rect.fromLTWH(
+          block.boundingBox.left / w,
+          block.boundingBox.top / h,
+          block.boundingBox.width / w,
+          block.boundingBox.height / h,
+        );
+        if (targetRect.overlaps(blockRect)) {
+          textBuffer
+            ..write(block.text.replaceAll('\n', ' '))
+            ..write(' ');
+        }
+      }
+
+      if (textBuffer.isEmpty) {
+        return;
+      }
+
+      final rawText = textBuffer.toString().trim();
+      final cleaned = _textCleaner.clean(rawText);
+
+      if (cleaned.formattedText.isEmpty) return;
+
+      if (cleaned.canonicalText == _lastCanonicalSign) return;
+      _lastCanonicalSign = cleaned.canonicalText;
+
+      _speakingLocked = true;
+      _signResetTimer?.cancel();
+
+      try {
+        await _voiceAnnouncer.speakMessage(
+          cleaned.formattedText,
+          bypassCooldown: true,
+          storeAsLastMessage: false,
+        );
+      } finally {
+        _speakingLocked = false;
+        _signResetTimer = Timer(const Duration(milliseconds: 2500), () {
+          if (_isDisposed) return;
+          _lastCanonicalSign = '';
+        });
+      }
     } catch (e) {
       debugPrint('OCR capture error: $e');
     } finally {
@@ -1536,6 +1533,8 @@ class CameraInferenceController extends ChangeNotifier {
     _statusTimer?.cancel();
     _voiceResumeTimer?.cancel();
     _voiceResumeTimer = null;
+    _signResetTimer?.cancel();
+    _signResetTimer = null;
     unawaited(_voiceCommandService.dispose());
     _weatherService.dispose();
     unawaited(_depthService?.dispose());
