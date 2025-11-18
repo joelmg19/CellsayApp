@@ -21,7 +21,7 @@ import '../../core/vision/detection_distance_extension.dart';
 import '../../core/vision/detection_geometry.dart';
 import '../../core/vision/distance_estimator.dart';
 import '../../core/vision/distance_estimator_provider.dart';
-import '../../core/tts/text_cleaner.dart';
+import '../../core/vision/text_cleaner.dart';
 import '../../models/detection_insight.dart';
 import '../../models/models.dart';
 import '../../models/voice_settings.dart';
@@ -402,39 +402,37 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   String _normalizeCartelText(String text) {
-    final collapsedWhitespace = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (collapsedWhitespace.isEmpty) {
+    var normalized = _textCleaner.normalizeForOcr(
+      text,
+      recoverKerning: true,
+    );
+
+    if (normalized.isEmpty) {
       return '';
     }
 
-    final pattern = RegExp(
-      r"""(?:^|\s)[\p{L}\p{N}](?:\s+[\p{L}\p{N}]){1,}(?=(?:\s|$|[\.,;:!\?\)\]"'»”’]))""",
-      unicode: true,
+    normalized = normalized.replaceAll(RegExp(r'\s*[/|]\s*'), ' / ');
+    normalized = normalized.replaceAll(RegExp(r'\s+-\s+'), ' - ');
+    normalized = normalized.replaceAllMapped(
+      RegExp(r'\b(av)\.?' r'\s+', caseSensitive: false),
+      (m) => '${m[1]!.toUpperCase()}. ',
     );
-
-    final normalized = collapsedWhitespace.replaceAllMapped(pattern, (match) {
-      final segment = match.group(0)!;
-      final hasLeadingSpace = segment.startsWith(RegExp(r'\s'));
-      final trimmed = segment.trim();
-      final collapsedLetters = trimmed.replaceAll(RegExp(r'\s+'), '');
-      return hasLeadingSpace ? ' $collapsedLetters' : collapsedLetters;
-    });
 
     return normalized.trim();
   }
 
   img.Image _preprocessForTextRecognition(img.Image source) {
     var working = img.grayscale(source);
-    working = img.adjustColor(working, contrast: 1.25);
-    working = img.gaussianBlur(working, radius: 1);
-    working = _applyLocalThreshold(working, windowRadius: 6, bias: -10);
+    working = img.adjustColor(working, contrast: 1.35, brightness: 8);
+    working = img.gaussianBlur(working, radius: 2);
+    working = _applyLocalThreshold(working, windowRadius: 8, bias: -8);
     return working;
   }
 
   img.Image _applyLocalThreshold(
     img.Image grayscale, {
-    int windowRadius = 6,
-    int bias = -10,
+    int windowRadius = 8,
+    int bias = -8,
   }) {
     final safeRadius = windowRadius.clamp(1, 24);
     final blurred = img.gaussianBlur(img.Image.from(grayscale), radius: safeRadius);
@@ -654,7 +652,7 @@ class CameraInferenceController extends ChangeNotifier {
       scaled.bottom.clamp(0.0, 1.0),
     );
 
-    scaled = _expandNormalizedRect(scaled, growFraction: 0.22);
+    scaled = expandNormalizedRect(scaled, growFraction: 0.28);
 
     if (scaled.width <= 0 || scaled.height <= 0) {
       return null;
