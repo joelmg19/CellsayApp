@@ -11,6 +11,9 @@
         android:required="false" />
     <!-- Microphone permission for voice commands -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Location permissions for weather based on ubicación del usuario -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:label="CellSay"

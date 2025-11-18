@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 
 /// Represents simplified weather information for accessibility feedback.
@@ -26,18 +27,29 @@ class WeatherInfo {
 
 /// Service that fetches weather data using the public Open-Meteo API.
 class WeatherService {
-  WeatherService({http.Client? client}) : _client = client ?? http.Client();
+  WeatherService({http.Client? client, GeolocatorPlatform? geolocator})
+      : _client = client ?? http.Client(),
+        _geolocator = geolocator ?? GeolocatorPlatform.instance;
+
+  static const double _kDefaultLatitude = -33.4489; // Santiago, Chile.
+  static const double _kDefaultLongitude = -70.6693;
 
   final http.Client _client;
-  double _latitude = 19.4326; // Ciudad de México por defecto.
-  double _longitude = -99.1332;
+  final GeolocatorPlatform _geolocator;
+
+  double _latitude = _kDefaultLatitude;
+  double _longitude = _kDefaultLongitude;
+  bool _hasResolvedLocation = false;
 
   void setCoordinates(double latitude, double longitude) {
     _latitude = latitude;
     _longitude = longitude;
+    _hasResolvedLocation = true;
   }
 
   Future<WeatherInfo?> loadCurrentWeather() async {
+    await _ensureCoordinates();
+
     final uri = Uri.parse(
       'https://api.open-meteo.com/v1/forecast?latitude=$_latitude&longitude=$_longitude&current_weather=true',
     );
@@ -75,6 +87,35 @@ class WeatherService {
 
   void dispose() {
     _client.close();
+  }
+
+  Future<void> _ensureCoordinates() async {
+    if (_hasResolvedLocation) return;
+    _hasResolvedLocation = true;
+
+    try {
+      final serviceEnabled = await _geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        return;
+      }
+
+      LocationPermission permission = await _geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await _geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final position = await _geolocator.getCurrentPosition();
+      _latitude = position.latitude;
+      _longitude = position.longitude;
+    } catch (_) {
+      _latitude = _kDefaultLatitude;
+      _longitude = _kDefaultLongitude;
+    }
   }
 
   double? _toDouble(dynamic value) {
