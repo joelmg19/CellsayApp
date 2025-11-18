@@ -21,7 +21,7 @@ import '../../core/vision/detection_distance_extension.dart';
 import '../../core/vision/detection_geometry.dart';
 import '../../core/vision/distance_estimator.dart';
 import '../../core/vision/distance_estimator_provider.dart';
-import '../../core/tts/text_cleaner.dart';
+import '../../core/vision/text_cleaner.dart';
 import '../../models/detection_insight.dart';
 import '../../models/models.dart';
 import '../../models/voice_settings.dart';
@@ -402,25 +402,54 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   String _normalizeCartelText(String text) {
-    final collapsedWhitespace = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (collapsedWhitespace.isEmpty) {
+    var normalized = _textCleaner.normalizeForOcr(
+      text,
+      recoverKerning: true,
+    );
+
+    if (normalized.isEmpty) {
       return '';
     }
 
-    final pattern = RegExp(
-      r"""(?:^|\s)[\p{L}\p{N}](?:\s+[\p{L}\p{N}]){1,}(?=(?:\s|$|[\.,;:!\?\)\]"'»”’]))""",
-      unicode: true,
+    normalized = normalized.replaceAll(RegExp(r'\s*[/|]\s*'), ' / ');
+    normalized = normalized.replaceAll(RegExp(r'\s+-\s+'), ' - ');
+    normalized = normalized.replaceAllMapped(
+      RegExp(r'\b(av)\.?' r'\s+', caseSensitive: false),
+      (m) => '${m[1]!.toUpperCase()}. ',
     );
 
-    final normalized = collapsedWhitespace.replaceAllMapped(pattern, (match) {
-      final segment = match.group(0)!;
-      final hasLeadingSpace = segment.startsWith(RegExp(r'\s'));
-      final trimmed = segment.trim();
-      final collapsedLetters = trimmed.replaceAll(RegExp(r'\s+'), '');
-      return hasLeadingSpace ? ' $collapsedLetters' : collapsedLetters;
-    });
-
     return normalized.trim();
+  }
+
+  img.Image _preprocessForTextRecognition(img.Image source) {
+    var working = img.grayscale(source);
+    working = img.adjustColor(working, contrast: 1.35, brightness: 8);
+    working = img.gaussianBlur(working, radius: 2);
+    working = _applyLocalThreshold(working, windowRadius: 8, bias: -8);
+    return working;
+  }
+
+  img.Image _applyLocalThreshold(
+    img.Image grayscale, {
+    int windowRadius = 8,
+    int bias = -8,
+  }) {
+    final safeRadius = windowRadius.clamp(1, 24);
+    final blurred = img.gaussianBlur(img.Image.from(grayscale), radius: safeRadius);
+    final clampedBias = bias.clamp(-64, 64).toInt();
+
+    for (int y = 0; y < grayscale.height; y++) {
+      for (int x = 0; x < grayscale.width; x++) {
+        final originalPixel = grayscale.getPixel(x, y);
+        final blurredPixel = blurred.getPixel(x, y);
+        final originalL = originalPixel.luminance;
+        final threshold = (blurredPixel.luminance + clampedBias).clamp(0, 255).toInt();
+        final value = originalL > threshold ? 255 : 0;
+        grayscale.setPixelRgba(x, y, value, value, value, 255);
+      }
+    }
+
+    return grayscale;
   }
 
   Future<void> _captureAndReadSign(
@@ -456,11 +485,6 @@ class CameraInferenceController extends ChangeNotifier {
       await file.writeAsBytes(imageBytes, flush: true);
       if (_isDisposed) return;
 
-      final input = InputImage.fromFilePath(filePath);
-
-      final recognized = await _textRecognizer.processImage(input);
-      if (_isDisposed) return;
-
       final img.Image? decoded = await compute(img.decodeImage, imageBytes);
       if (decoded == null) {
         debugPrint('OCR capture error: failed to decode image size.');
@@ -468,8 +492,22 @@ class CameraInferenceController extends ChangeNotifier {
       }
       if (_isDisposed) return;
 
-      final int w = decoded.width;
-      final int h = decoded.height;
+      final img.Image preprocessed = _preprocessForTextRecognition(decoded);
+      final processedPath = path.join(
+        tempDir.path,
+        'cartel_proc_${detectionTime.millisecondsSinceEpoch}.jpg',
+      );
+      final processedFile = File(processedPath);
+      await processedFile.writeAsBytes(img.encodeJpg(preprocessed, quality: 95), flush: true);
+      if (_isDisposed) return;
+
+      final input = InputImage.fromFilePath(processedPath);
+
+      final recognized = await _textRecognizer.processImage(input);
+      if (_isDisposed) return;
+
+      final int w = preprocessed.width;
+      final int h = preprocessed.height;
 
       final candidates = <MapEntry<YOLOResult, Rect>>[];
       for (final cartel in cartelDetections) {
@@ -613,6 +651,8 @@ class CameraInferenceController extends ChangeNotifier {
       scaled.right.clamp(0.0, 1.0),
       scaled.bottom.clamp(0.0, 1.0),
     );
+
+    scaled = expandNormalizedRect(scaled, growFraction: 0.28);
 
     if (scaled.width <= 0 || scaled.height <= 0) {
       return null;

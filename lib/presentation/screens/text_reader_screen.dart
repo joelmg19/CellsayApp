@@ -7,7 +7,7 @@ import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:ultralytics_yolo_example/core/tts/text_cleaner.dart';
+import 'package:ultralytics_yolo_example/core/vision/text_cleaner.dart';
 
 class TextReaderScreen extends StatefulWidget {
   const TextReaderScreen({super.key});

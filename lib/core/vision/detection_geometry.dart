@@ -168,6 +168,27 @@ double? extractConfidence(YOLOResult result) {
   return null;
 }
 
+Rect clampNormalizedRect(Rect rect) {
+  return Rect.fromLTRB(
+    rect.left.clamp(0.0, 1.0),
+    rect.top.clamp(0.0, 1.0),
+    rect.right.clamp(0.0, 1.0),
+    rect.bottom.clamp(0.0, 1.0),
+  );
+}
+
+Rect expandNormalizedRect(Rect rect, {double growFraction = 0.28}) {
+  final dx = rect.width * growFraction / 2;
+  final dy = rect.height * growFraction / 2;
+  final expanded = Rect.fromLTRB(
+    rect.left - dx,
+    rect.top - dy,
+    rect.right + dx,
+    rect.bottom + dy,
+  );
+  return clampNormalizedRect(expanded);
+}
+
 Rect? _rectFromDynamic(Rect? Function() getter) {
   try {
     return getter();
