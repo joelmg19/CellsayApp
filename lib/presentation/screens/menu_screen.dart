@@ -45,7 +45,7 @@ class _MenuScreenState extends State<MenuScreen> {
 
   Future<void> _readMenu() async {
     await _speak(
-      'Menú principal. Opciones: Dinero, Carteles, Objetos, Profundidad, Lectura, Hora y Clima. Diga una opción.',
+      'Menú principal. Opciones: Dinero, Objetos, Profundidad, Lectura, Hora y Clima. Diga una opción.',
     );
   }
 
@@ -99,16 +99,6 @@ class _MenuScreenState extends State<MenuScreen> {
       setState(() => _isListening = false);
       if (!mounted) return;
       Navigator.pushNamed(context, '/money');
-      return;
-    }
-    if (t.contains('cartel') ||
-        t.contains('carteles') ||
-        t.contains('señal') ||
-        t.contains('letrero')) {
-      await _stt.stop();
-      setState(() => _isListening = false);
-      if (!mounted) return;
-      Navigator.pushNamed(context, '/sign-reader');
       return;
     }
     if (t.contains('objeto')) {
@@ -174,11 +164,6 @@ class _MenuScreenState extends State<MenuScreen> {
         onTap: () => Navigator.pushNamed(context, '/money-offline'),
       ),
       _BigButton(
-        label: 'Carteles',
-        icon: Icons.sign_language,
-        onTap: () => Navigator.pushNamed(context, '/sign-reader'),
-      ),
-      _BigButton(
         label: 'Objetos',
         icon: Icons.center_focus_strong_rounded,
         onTap: () => Navigator.pushNamed(context, '/camera'),
@@ -226,29 +211,35 @@ class _MenuScreenState extends State<MenuScreen> {
           ),
         ),
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 12),
-              Row(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Spacer(),
-                  FilledButton.icon(
-                    onPressed: _startTalkback,
-                    icon: Icon(_isListening ? Icons.hearing_disabled : Icons.hearing),
-                    label: Text(_isListening ? 'Talback ON' : 'Talback'),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Spacer(),
+                      FilledButton.icon(
+                        onPressed: _startTalkback,
+                        icon: Icon(_isListening ? Icons.hearing_disabled : Icons.hearing),
+                        label: Text(_isListening ? 'Talback ON' : 'Talback'),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 24),
+                  for (final b in buttons) ...[
+                    SizedBox(width: double.infinity, child: b),
+                    const SizedBox(height: 16),
+                  ],
+                  const SizedBox(height: 12),
                 ],
               ),
-              const SizedBox(height: 24),
-              for (final b in buttons) ...[
-                SizedBox(width: double.infinity, child: b),
-                const SizedBox(height: 16),
-              ],
-            ],
+            ),
           ),
         ),
       ),
