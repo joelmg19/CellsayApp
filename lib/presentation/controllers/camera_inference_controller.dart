@@ -661,6 +661,18 @@ class CameraInferenceController extends ChangeNotifier {
     return scaled;
   }
 
+  Rect _expandNormalizedRect(Rect rect, {double growFraction = 0.2}) {
+    final dx = rect.width * growFraction / 2;
+    final dy = rect.height * growFraction / 2;
+    final expanded = Rect.fromLTRB(
+      (rect.left - dx).clamp(0.0, 1.0),
+      (rect.top - dy).clamp(0.0, 1.0),
+      (rect.right + dx).clamp(0.0, 1.0),
+      (rect.bottom + dy).clamp(0.0, 1.0),
+    );
+    return expanded;
+  }
+
   void _annotateDistances(List<YOLOResult> results) {
     if (results.isEmpty) return;
 
