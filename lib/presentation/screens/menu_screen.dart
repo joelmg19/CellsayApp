@@ -45,7 +45,7 @@ class _MenuScreenState extends State<MenuScreen> {
 
   Future<void> _readMenu() async {
     await _speak(
-      'Menú principal. Opciones: Dinero, Objetos, Profundidad, Lectura, Hora y Clima. Diga una opción.',
+      'Menú principal. Opciones: Dinero, Dinero offline, Objetos, Lectura, Hora y Clima. Diga una opción.',
     );
   }
 
@@ -108,13 +108,6 @@ class _MenuScreenState extends State<MenuScreen> {
       Navigator.pushNamed(context, '/camera');
       return;
     }
-    if (t.contains('profund')) {
-      await _stt.stop();
-      setState(() => _isListening = false);
-      if (!mounted) return;
-      Navigator.pushNamed(context, '/depth');
-      return;
-    }
     if (t.contains('lectura') || t.contains('texto') || t.contains('leer')) {
       await _stt.stop();
       setState(() => _isListening = false);
@@ -167,11 +160,6 @@ class _MenuScreenState extends State<MenuScreen> {
         label: 'Objetos',
         icon: Icons.center_focus_strong_rounded,
         onTap: () => Navigator.pushNamed(context, '/camera'),
-      ),
-      _BigButton(
-        label: 'Profundidad',
-        icon: Icons.straighten,
-        onTap: () => Navigator.pushNamed(context, '/depth'),
       ),
       _BigButton(
         label: 'Lectura',
