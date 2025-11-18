@@ -41,7 +41,7 @@ class TextCleaner {
       return CleanTextResult.empty;
     }
 
-    var joined = processed.join(' ').trim();
+    var joined = processed.join(' — ').trim();
     if (joined.isEmpty) {
       return CleanTextResult.empty;
     }
@@ -53,28 +53,17 @@ class TextCleaner {
 
     return CleanTextResult(
       formattedText: joined,
-      canonicalText: joined,
+      canonicalText: _canonicalize(joined),
       isAlert: isAlert,
     );
   }
 
   String _formatSentence(String input) {
     var text = _restoreSeparatedLetters(input);
+    text = _mergeLooseSpacing(text);
     text = _normalizeWhitespace(text);
     text = _normalizeNumbers(text);
     text = text.trim();
-    if (text.isEmpty) {
-      return '';
-    }
-
-    if (_looksAllCaps(text)) {
-      text = text.toLowerCase();
-    }
-
-    text = _capitalize(text);
-    if (!_endsWithPunctuation(text)) {
-      text = '$text.';
-    }
     return text;
   }
 
@@ -115,6 +104,35 @@ class TextCleaner {
     return RegExp(r'^[A-ZÁÉÍÓÚÜÑ]$').hasMatch(word);
   }
 
+  String _mergeLooseSpacing(String text) {
+    // Une palabras partidas por espacios excesivos o caracteres aislados.
+    final pattern = RegExp(r'(\p{L})(?:\s{2,}|\s)(?=\p{L})', unicode: true);
+    var merged = text.replaceAllMapped(pattern, (m) => '${m[1]}');
+
+    final tokens = merged.split(RegExp(r'\s+'));
+    final buffer = StringBuffer();
+    final candidate = <String>[];
+
+    void flush() {
+      if (candidate.isEmpty) return;
+      final glued = candidate.join('');
+      buffer.write('$glued ');
+      candidate.clear();
+    }
+
+    for (final token in tokens) {
+      if (token.length == 1 && RegExp(r'^\p{L}$', unicode: true).hasMatch(token)) {
+        candidate.add(token);
+        continue;
+      }
+      flush();
+      buffer.write('$token ');
+    }
+
+    flush();
+    return buffer.toString().trim();
+  }
+
   String _normalizeNumbers(String text) {
     var result = text;
 
@@ -151,29 +169,17 @@ class TextCleaner {
     return '$pesos pesos con $padded centavos';
   }
 
-  bool _looksAllCaps(String value) {
-    final letters = RegExp(r'[A-ZÁÉÍÓÚÜÑa-záéíóúüñ]');
-    final matches = letters.allMatches(value);
-    if (matches.isEmpty) {
-      return false;
-    }
-    return matches.every((match) {
-      final char = match.group(0)!;
-      return char == char.toUpperCase();
-    });
-  }
-
-  String _capitalize(String text) {
-    if (text.isEmpty) return text;
-    final first = text.substring(0, 1).toUpperCase();
-    if (text.length == 1) {
-      return first;
-    }
-    return '$first${text.substring(1)}';
-  }
-
   bool _endsWithPunctuation(String text) {
     return RegExp(r'[.!?¡¿]$').hasMatch(text);
+  }
+
+  String _canonicalize(String text) {
+    final normalized = text
+        .replaceAll(RegExp(r'[\s\-–—]+'), ' ')
+        .replaceAll(RegExp(r'[^\p{L}\p{N}\s]', unicode: true), '')
+        .toLowerCase()
+        .trim();
+    return normalized.isEmpty ? text.trim() : normalized;
   }
 
   bool _containsAlert(String text) {

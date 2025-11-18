@@ -423,6 +423,37 @@ class CameraInferenceController extends ChangeNotifier {
     return normalized.trim();
   }
 
+  img.Image _preprocessForTextRecognition(img.Image source) {
+    var working = img.grayscale(source);
+    working = img.adjustColor(working, contrast: 1.25);
+    working = img.gaussianBlur(working, radius: 1);
+    working = _applyLocalThreshold(working, windowRadius: 6, bias: -10);
+    return working;
+  }
+
+  img.Image _applyLocalThreshold(
+    img.Image grayscale, {
+    int windowRadius = 6,
+    int bias = -10,
+  }) {
+    final safeRadius = windowRadius.clamp(1, 24);
+    final blurred = img.gaussianBlur(img.Image.from(grayscale), radius: safeRadius);
+    final clampedBias = bias.clamp(-64, 64).toInt();
+
+    for (int y = 0; y < grayscale.height; y++) {
+      for (int x = 0; x < grayscale.width; x++) {
+        final originalPixel = grayscale.getPixel(x, y);
+        final blurredPixel = blurred.getPixel(x, y);
+        final originalL = originalPixel.luminance;
+        final threshold = (blurredPixel.luminance + clampedBias).clamp(0, 255).toInt();
+        final value = originalL > threshold ? 255 : 0;
+        grayscale.setPixelRgba(x, y, value, value, value, 255);
+      }
+    }
+
+    return grayscale;
+  }
+
   Future<void> _captureAndReadSign(
     Uint8List imageBytes,
     ProcessedDetections processed,
@@ -456,11 +487,6 @@ class CameraInferenceController extends ChangeNotifier {
       await file.writeAsBytes(imageBytes, flush: true);
       if (_isDisposed) return;
 
-      final input = InputImage.fromFilePath(filePath);
-
-      final recognized = await _textRecognizer.processImage(input);
-      if (_isDisposed) return;
-
       final img.Image? decoded = await compute(img.decodeImage, imageBytes);
       if (decoded == null) {
         debugPrint('OCR capture error: failed to decode image size.');
@@ -468,8 +494,22 @@ class CameraInferenceController extends ChangeNotifier {
       }
       if (_isDisposed) return;
 
-      final int w = decoded.width;
-      final int h = decoded.height;
+      final img.Image preprocessed = _preprocessForTextRecognition(decoded);
+      final processedPath = path.join(
+        tempDir.path,
+        'cartel_proc_${detectionTime.millisecondsSinceEpoch}.jpg',
+      );
+      final processedFile = File(processedPath);
+      await processedFile.writeAsBytes(img.encodeJpg(preprocessed, quality: 95), flush: true);
+      if (_isDisposed) return;
+
+      final input = InputImage.fromFilePath(processedPath);
+
+      final recognized = await _textRecognizer.processImage(input);
+      if (_isDisposed) return;
+
+      final int w = preprocessed.width;
+      final int h = preprocessed.height;
 
       final candidates = <MapEntry<YOLOResult, Rect>>[];
       for (final cartel in cartelDetections) {
@@ -614,11 +654,25 @@ class CameraInferenceController extends ChangeNotifier {
       scaled.bottom.clamp(0.0, 1.0),
     );
 
+    scaled = _expandNormalizedRect(scaled, growFraction: 0.22);
+
     if (scaled.width <= 0 || scaled.height <= 0) {
       return null;
     }
 
     return scaled;
+  }
+
+  Rect _expandNormalizedRect(Rect rect, {double growFraction = 0.2}) {
+    final dx = rect.width * growFraction / 2;
+    final dy = rect.height * growFraction / 2;
+    final expanded = Rect.fromLTRB(
+      (rect.left - dx).clamp(0.0, 1.0),
+      (rect.top - dy).clamp(0.0, 1.0),
+      (rect.right + dx).clamp(0.0, 1.0),
+      (rect.bottom + dy).clamp(0.0, 1.0),
+    );
+    return expanded;
   }
 
   void _annotateDistances(List<YOLOResult> results) {
