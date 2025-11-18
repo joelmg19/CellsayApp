@@ -45,7 +45,7 @@ class _MenuScreenState extends State<MenuScreen> {
 
   Future<void> _readMenu() async {
     await _speak(
-      'Menú principal. Opciones: Dinero, Objetos, Profundidad, Lectura, Hora, Clima. Diga una opción.',
+      'Menú principal. Opciones: Dinero, Carteles, Objetos, Profundidad, Lectura, Hora y Clima. Diga una opción.',
     );
   }
 
@@ -99,6 +99,16 @@ class _MenuScreenState extends State<MenuScreen> {
       setState(() => _isListening = false);
       if (!mounted) return;
       Navigator.pushNamed(context, '/money');
+      return;
+    }
+    if (t.contains('cartel') ||
+        t.contains('carteles') ||
+        t.contains('señal') ||
+        t.contains('letrero')) {
+      await _stt.stop();
+      setState(() => _isListening = false);
+      if (!mounted) return;
+      Navigator.pushNamed(context, '/sign-reader');
       return;
     }
     if (t.contains('objeto')) {
@@ -162,6 +172,11 @@ class _MenuScreenState extends State<MenuScreen> {
         label: 'Dinero Offline',
         icon: Icons.money_off,
         onTap: () => Navigator.pushNamed(context, '/money-offline'),
+      ),
+      _BigButton(
+        label: 'Carteles',
+        icon: Icons.sign_language,
+        onTap: () => Navigator.pushNamed(context, '/sign-reader'),
       ),
       _BigButton(
         label: 'Objetos',
