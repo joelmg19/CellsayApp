@@ -5,6 +5,7 @@ import 'detection_stats_display.dart';
 import 'model_selector.dart';
 import 'threshold_pill.dart';
 import 'depth_control_section.dart';
+import 'sign_reader_panel.dart';
 
 /// Top overlay widget containing model selector, stats, and threshold pills
 class CameraInferenceOverlay extends StatelessWidget {
@@ -37,6 +38,16 @@ class CameraInferenceOverlay extends StatelessWidget {
           textScaleFactor: controller.fontScale,
         ),
       if (controller.displayedModel == ModelType.Exterior)
+        SizedBox(height: isLandscape ? 8 : 12),
+      if (controller.isSignReaderEnabled)
+        SignReaderPanel(
+          lastText: controller.lastSignText,
+          timestamp: controller.lastSignReadAt,
+          imageBytes: controller.cachedCartelImage,
+          isProcessing: controller.isOcrProcessing,
+          textScaleFactor: controller.fontScale,
+        ),
+      if (controller.isSignReaderEnabled)
         SizedBox(height: isLandscape ? 8 : 12),
       DetectionStatsDisplay(
         detectionCount: controller.detectionCount,

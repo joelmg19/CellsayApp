@@ -97,6 +97,8 @@ class CameraInferenceController extends ChangeNotifier {
   DateTime? _lastSignToggleTimestamp;
   static const Duration _signToggleCooldown = Duration(milliseconds: 1500);
   String _lastCanonicalSign = '';
+  String? _lastSignText;
+  DateTime? _lastSignReadAt;
   bool _speakingLocked = false;
   Timer? _signResetTimer;
   // --- FIN DE VARIABLES ORIGINALES ---
@@ -145,12 +147,18 @@ class CameraInferenceController extends ChangeNotifier {
       !_isModelLoading &&
       !_areControlsLocked &&
       !_isProcessingVoiceCommand;
+  String? get lastSignText => _lastSignText;
+  DateTime? get lastSignReadAt => _lastSignReadAt;
+  bool get isOcrProcessing => _isOcrBusy || _isCaptureOcrActive;
   // --- FIN DE GETTERS ORIGINALES ---
 
   CameraInferenceController({ModelType initialModel = ModelType.Interior})
       : _selectedModel = initialModel,
         _confidenceThreshold = _defaultConfidence(initialModel),
         _numItemsThreshold = _defaultNumItems(initialModel) {
+    if (initialModel == ModelType.LectorCarteles) {
+      _isSignReaderEnabled = true;
+    }
     _modelManager = ModelManager(
       onDownloadProgress: (progress) {
         _downloadProgress = progress;
@@ -516,6 +524,8 @@ class CameraInferenceController extends ChangeNotifier {
       }
 
       _lastCanonicalSign = cleaned.canonicalText;
+      _lastSignText = cleaned.formattedText;
+      _lastSignReadAt = detectionTime;
       _speakingLocked = true;
       _signResetTimer?.cancel();
 
@@ -554,6 +564,13 @@ class CameraInferenceController extends ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  void _clearSignReaderData() {
+    _cachedCartelImage = null;
+    _cachedCartelImageTimestamp = null;
+    _lastSignText = null;
+    _lastSignReadAt = null;
   }
 
   Rect? _normalizedRect(Rect rect, double imageWidth, double imageHeight) {
@@ -1255,6 +1272,7 @@ class CameraInferenceController extends ChangeNotifier {
       _modelBeforeSignReader = _selectedModel == ModelType.LectorCarteles
           ? (_modelBeforeSignReader ?? ModelType.Exterior)
           : _selectedModel;
+      _clearSignReaderData();
       _isSignReaderEnabled = true;
       notifyListeners();
       if (_selectedModel != ModelType.LectorCarteles) {
@@ -1271,6 +1289,7 @@ class CameraInferenceController extends ChangeNotifier {
     final fallback = _modelBeforeSignReader ?? ModelType.Exterior;
     _isSignReaderEnabled = false;
     _modelBeforeSignReader = null;
+    _clearSignReaderData();
     notifyListeners();
     if (_selectedModel != fallback) {
       changeModel(fallback);
@@ -1293,9 +1312,11 @@ class CameraInferenceController extends ChangeNotifier {
       );
       _postProcessor.clearHistory();
       if (model == ModelType.LectorCarteles) {
+        _clearSignReaderData();
         _isSignReaderEnabled = true;
       } else {
         if (_isSignReaderEnabled) {
+          _clearSignReaderData();
           _isSignReaderEnabled = false;
         }
         if (model != ModelType.LectorCarteles) {
@@ -1542,6 +1563,7 @@ class CameraInferenceController extends ChangeNotifier {
     _voiceResumeTimer = null;
     _signResetTimer?.cancel();
     _signResetTimer = null;
+    _clearSignReaderData();
     unawaited(_voiceCommandService.dispose());
     _weatherService.dispose();
     unawaited(_depthService?.dispose());

@@ -1,14 +1,15 @@
 // Archivo: lib/main.dart
 
 import 'package:flutter/material.dart';
+import 'package:ultralytics_yolo_example/models/camera_launch_args.dart';
+import 'package:ultralytics_yolo_example/models/models.dart';
 import 'package:ultralytics_yolo_example/presentation/screens/camera_inference_screen.dart';
+import 'package:ultralytics_yolo_example/presentation/screens/depth_camera_screen.dart';
 import 'package:ultralytics_yolo_example/presentation/screens/menu_screen.dart';
-import 'package:ultralytics_yolo_example/presentation/screens/money_detector_screen.dart';
 import 'package:ultralytics_yolo_example/presentation/screens/money_detector_offline_screen.dart';
+import 'package:ultralytics_yolo_example/presentation/screens/money_detector_screen.dart';
 import 'package:ultralytics_yolo_example/presentation/screens/single_image_screen.dart';
 import 'package:ultralytics_yolo_example/presentation/screens/text_reader_screen.dart';
-
-import 'package:ultralytics_yolo_example/presentation/screens/depth_camera_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -36,8 +37,20 @@ class MyApp extends StatelessWidget {
           );
         }
         if (settings.name == '/camera') {
+          final args = settings.arguments;
+          final initialModel = args is CameraLaunchArgs && args.initialModel != null
+              ? args.initialModel!
+              : ModelType.Interior;
           return MaterialPageRoute(
-            builder: (_) => const CameraInferenceScreen(),
+            builder: (_) => CameraInferenceScreen(modelType: initialModel),
+            settings: settings,
+          );
+        }
+        if (settings.name == '/sign-reader') {
+          return MaterialPageRoute(
+            builder: (_) => const CameraInferenceScreen(
+              modelType: ModelType.LectorCarteles,
+            ),
             settings: settings,
           );
         }
