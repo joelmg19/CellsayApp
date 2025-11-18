@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' show Rect;
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -72,9 +71,6 @@ class CameraInferenceController extends ChangeNotifier {
   bool _isListeningForCommand = false;
   bool _isVoiceFeedbackPaused = false;
   bool _isProcessingVoiceCommand = false;
-  final Set<String> spokenTexts = <String>{};
-  int _noDetectionFrames = 0;
-  bool _ttsBusy = false;
   final _yoloController = YOLOViewController();
   late final ModelManager _modelManager;
   final DetectionPostProcessor _postProcessor = DetectionPostProcessor();
@@ -100,6 +96,9 @@ class CameraInferenceController extends ChangeNotifier {
   ModelType? _modelBeforeSignReader;
   DateTime? _lastSignToggleTimestamp;
   static const Duration _signToggleCooldown = Duration(milliseconds: 1500);
+  String _lastCanonicalSign = '';
+  bool _speakingLocked = false;
+  Timer? _signResetTimer;
   // --- FIN DE VARIABLES ORIGINALES ---
 
   // --- GETTERS ORIGINALES ---
@@ -232,18 +231,6 @@ class CameraInferenceController extends ChangeNotifier {
     final hasCartelDetections = filtered.any(
       (d) => isCartelLabel(extractLabel(d)),
     );
-
-    if (_selectedModel == ModelType.LectorCarteles) {
-      if (hasCartelDetections) {
-        _noDetectionFrames = 0;
-      } else {
-        _noDetectionFrames++;
-        if (_noDetectionFrames > 10) {
-          spokenTexts.clear();
-          _noDetectionFrames = 0;
-        }
-      }
-    }
 
     bool shouldNotify = false;
     if (_selectedModel == ModelType.LectorCarteles) {
@@ -405,12 +392,34 @@ class CameraInferenceController extends ChangeNotifier {
     onDetectionResults(results, originalImage);
   }
 
+  String _normalizeCartelText(String text) {
+    final collapsedWhitespace = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (collapsedWhitespace.isEmpty) {
+      return '';
+    }
+
+    final pattern = RegExp(
+      r"""(?:^|\s)[\p{L}\p{N}](?:\s+[\p{L}\p{N}]){1,}(?=(?:\s|$|[\.,;:!\?\)\]"'»”’]))""",
+      unicode: true,
+    );
+
+    final normalized = collapsedWhitespace.replaceAllMapped(pattern, (match) {
+      final segment = match.group(0)!;
+      final hasLeadingSpace = segment.startsWith(RegExp(r'\s'));
+      final trimmed = segment.trim();
+      final collapsedLetters = trimmed.replaceAll(RegExp(r'\s+'), '');
+      return hasLeadingSpace ? ' $collapsedLetters' : collapsedLetters;
+    });
+
+    return normalized.trim();
+  }
+
   Future<void> _captureAndReadSign(
     Uint8List imageBytes,
     ProcessedDetections processed,
     DateTime detectionTime,
   ) async {
-    if (_isDisposed) return;
+    if (_isDisposed || _speakingLocked) return;
 
     try {
       final cartelDetections = processed.filteredResults
@@ -430,6 +439,19 @@ class CameraInferenceController extends ChangeNotifier {
       final tempDir = await getTemporaryDirectory();
       if (_isDisposed) return;
 
+      final filePath = path.join(
+        tempDir.path,
+        'cartel_${detectionTime.millisecondsSinceEpoch}.jpg',
+      );
+      final file = File(filePath);
+      await file.writeAsBytes(imageBytes, flush: true);
+      if (_isDisposed) return;
+
+      final input = InputImage.fromFilePath(filePath);
+
+      final recognized = await _textRecognizer.processImage(input);
+      if (_isDisposed) return;
+
       final img.Image? decoded = await compute(img.decodeImage, imageBytes);
       if (decoded == null) {
         debugPrint('OCR capture error: failed to decode image size.');
@@ -439,11 +461,10 @@ class CameraInferenceController extends ChangeNotifier {
 
       final int w = decoded.width;
       final int h = decoded.height;
-      final detectionTimestamp = detectionTime.millisecondsSinceEpoch;
 
-      for (int i = 0; i < cartelDetections.length; i++) {
-        final detection = cartelDetections[i];
-        final rawCartelRect = extractBoundingBox(detection);
+      final candidates = <MapEntry<YOLOResult, Rect>>[];
+      for (final cartel in cartelDetections) {
+        final rawCartelRect = extractBoundingBox(cartel);
         if (rawCartelRect == null) continue;
 
         final rect = _normalizedRect(
@@ -453,44 +474,67 @@ class CameraInferenceController extends ChangeNotifier {
         );
         if (rect == null) continue;
 
-        final cropped = _cropImage(decoded, rect);
-        if (cropped == null) continue;
+        candidates.add(MapEntry(cartel, rect));
+      }
 
-        final croppedPath = path.join(
-          tempDir.path,
-          'cartel_${detectionTimestamp}_$i.jpg',
+      if (candidates.isEmpty) {
+        return;
+      }
+
+      candidates.sort((a, b) =>
+          (b.value.width * b.value.height).compareTo(a.value.width * a.value.height));
+
+      final targetRect = candidates.first.value;
+
+      final textBuffer = StringBuffer();
+      for (final block in recognized.blocks) {
+        final blockRect = Rect.fromLTWH(
+          block.boundingBox.left / w,
+          block.boundingBox.top / h,
+          block.boundingBox.width / w,
+          block.boundingBox.height / h,
         );
-
-        await File(croppedPath)
-            .writeAsBytes(img.encodeJpg(cropped), flush: true);
-        if (_isDisposed) return;
-
-        final input = InputImage.fromFilePath(croppedPath);
-        final recognized = await _textRecognizer.processImage(input);
-        if (_isDisposed) return;
-
-        final rawText = recognized.blocks
-            .map((block) => block.text.replaceAll('\n', ' '))
-            .join(' ')
-            .trim();
-
-        if (rawText.isEmpty) {
-          continue;
+        if (targetRect.overlaps(blockRect)) {
+          textBuffer
+            ..write(block.text.replaceAll('\n', ' '))
+            ..write(' ');
         }
+      }
 
-        final cleaned = _textCleaner.clean(rawText);
-        final normalizedText = cleaned.canonicalText.toLowerCase().trim();
+      final rawText = textBuffer.isNotEmpty
+          ? textBuffer.toString().trim()
+          : recognized.text.replaceAll('\n', ' ').trim();
+      final normalizedText = _normalizeCartelText(rawText);
+      final cleaned = _textCleaner.clean(normalizedText);
 
-        if (normalizedText.isEmpty) {
-          continue;
-        }
+      if (cleaned.formattedText.isEmpty) {
+        return;
+      }
 
-        if (spokenTexts.contains(normalizedText)) {
-          continue;
-        }
+      if (cleaned.canonicalText == _lastCanonicalSign) {
+        return;
+      }
 
-        spokenTexts.add(normalizedText);
-        await _speakWithLock(cleaned.formattedText);
+      _lastCanonicalSign = cleaned.canonicalText;
+      _speakingLocked = true;
+      _signResetTimer?.cancel();
+
+      try {
+        await _voiceAnnouncer.speakMessage(
+          cleaned.formattedText,
+          bypassCooldown: true,
+          storeAsLastMessage: false,
+        );
+        debugPrint(
+          'OCR/VOICE -> announced sign canonical="${cleaned.canonicalText}"',
+        );
+      } finally {
+        _speakingLocked = false;
+        _signResetTimer?.cancel();
+        _signResetTimer = Timer(const Duration(milliseconds: 2500), () {
+          if (_isDisposed) return;
+          _lastCanonicalSign = '';
+        });
       }
     } catch (e) {
       debugPrint('OCR capture error: $e');
@@ -509,65 +553,6 @@ class CameraInferenceController extends ChangeNotifier {
       if (!_isDisposed) {
         notifyListeners();
       }
-    }
-  }
-
-  img.Image? _cropImage(img.Image source, Rect normalizedRect) {
-    final int left = math.max(0,
-        math.min(source.width - 1, (normalizedRect.left * source.width).round()));
-    final int top = math.max(0,
-        math.min(source.height - 1, (normalizedRect.top * source.height).round()));
-
-    final int width = math.max(
-      1,
-      math.min(
-        source.width - left,
-        (normalizedRect.width * source.width).round(),
-      ),
-    );
-    final int height = math.max(
-      1,
-      math.min(
-        source.height - top,
-        (normalizedRect.height * source.height).round(),
-      ),
-    );
-
-    if (width <= 0 || height <= 0) {
-      return null;
-    }
-
-    try {
-      return img.copyCrop(
-        source,
-        x: left,
-        y: top,
-        width: width,
-        height: height,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> _speakWithLock(String text) async {
-    if (_isDisposed || text.trim().isEmpty) return;
-
-    while (_ttsBusy && !_isDisposed) {
-      await Future.delayed(const Duration(milliseconds: 25));
-    }
-
-    if (_isDisposed) return;
-
-    _ttsBusy = true;
-    try {
-      await _voiceAnnouncer.speakMessage(
-        text,
-        bypassCooldown: true,
-        storeAsLastMessage: false,
-      );
-    } finally {
-      _ttsBusy = false;
     }
   }
 
@@ -798,10 +783,10 @@ class CameraInferenceController extends ChangeNotifier {
     _voiceCommandStatus = status;
     if (announce) {
       unawaited(
-        _voiceAnnouncer.speakMessage(
+        _announceSystemMessage(
           status,
+          force: true,
           bypassCooldown: true,
-          ignorePause: true,
         ),
       );
     }
@@ -1072,10 +1057,10 @@ class CameraInferenceController extends ChangeNotifier {
     if (!recognized) {
       _voiceCommandStatus = 'Comando no reconocido.';
       notifyListeners();
-      await _voiceAnnouncer.speakMessage(
+      await _announceSystemMessage(
         'No entendí el comando.',
+        force: true,
         bypassCooldown: true,
-        ignorePause: true,
       );
       return;
     }
@@ -1084,10 +1069,10 @@ class CameraInferenceController extends ChangeNotifier {
     notifyListeners();
 
     if (feedback != null) {
-      await _voiceAnnouncer.speakMessage(
+      await _announceSystemMessage(
         feedback,
+        force: true,
         bypassCooldown: true,
-        ignorePause: true,
       );
     }
 
@@ -1145,10 +1130,10 @@ class CameraInferenceController extends ChangeNotifier {
         _setVoiceFeedbackPaused(false);
         notifyListeners();
         unawaited(
-          _voiceAnnouncer.speakMessage(
+          _announceSystemMessage(
             message,
+            force: true,
             bypassCooldown: true,
-            ignorePause: true,
           ),
         );
       },
@@ -1176,10 +1161,10 @@ class CameraInferenceController extends ChangeNotifier {
       final status = _voiceCommandStatus;
       if (status != null && status.isNotEmpty) {
         unawaited(
-          _voiceAnnouncer.speakMessage(
+          _announceSystemMessage(
             status,
+            force: true,
             bypassCooldown: true,
-            ignorePause: true,
           ),
         );
       }
@@ -1215,10 +1200,10 @@ class CameraInferenceController extends ChangeNotifier {
     notifyListeners();
     if (wasListening) {
       unawaited(
-        _voiceAnnouncer.speakMessage(
+        _announceSystemMessage(
           'Escucha cancelada.',
+          force: true,
           bypassCooldown: true,
-          ignorePause: true,
         ),
       );
     }
@@ -1458,10 +1443,10 @@ class CameraInferenceController extends ChangeNotifier {
         _voiceCommandStatus = message;
         notifyListeners();
         unawaited(
-          _voiceAnnouncer.speakMessage(
+          _announceSystemMessage(
             message,
-            bypassCooldown: true,
-            ignorePause: true,
+            force: force,
+            bypassCooldown: force,
           ),
         );
       } else {
@@ -1472,10 +1457,10 @@ class CameraInferenceController extends ChangeNotifier {
       _voiceCommandStatus = 'No fue posible obtener el clima.';
       notifyListeners();
       unawaited(
-        _voiceAnnouncer.speakMessage(
+        _announceSystemMessage(
           'No fue posible obtener el clima actual.',
+          force: true,
           bypassCooldown: true,
-          ignorePause: true,
         ),
       );
     }
@@ -1527,6 +1512,21 @@ class CameraInferenceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _announceSystemMessage(
+      String message, {
+        bool force = false,
+        bool bypassCooldown = false,
+      }) async {
+    if (!force && !_isVoiceEnabled) return;
+
+    await _voiceAnnouncer.speakMessage(
+      message,
+      bypassCooldown: bypassCooldown || force,
+      ignorePause: force,
+      storeAsLastMessage: true,
+    );
+  }
+
   void _setVoiceFeedbackPaused(bool value) {
     if (_isVoiceFeedbackPaused == value) return;
     _isVoiceFeedbackPaused = value;
@@ -1540,6 +1540,8 @@ class CameraInferenceController extends ChangeNotifier {
     _statusTimer?.cancel();
     _voiceResumeTimer?.cancel();
     _voiceResumeTimer = null;
+    _signResetTimer?.cancel();
+    _signResetTimer = null;
     unawaited(_voiceCommandService.dispose());
     _weatherService.dispose();
     unawaited(_depthService?.dispose());
