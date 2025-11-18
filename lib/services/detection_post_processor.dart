@@ -176,11 +176,6 @@ class DetectionPostProcessor {
       candidate.boundingBox,
     );
 
-    final bothCartel = isCartelLabel(kept.label) && isCartelLabel(candidate.label);
-    if (bothCartel && (iou >= _iouThreshold * 0.7 || coverage >= 0.6)) {
-      return true;
-    }
-
     if (coverage >= 0.9) {
       return true;
     }
